@@ -57,6 +57,11 @@ class CommerceRunContext:
             raise TrustCartError(
                 "RUN_TIMEOUT", "The run reached its 20-second wall-clock limit", 408
             )
+        if self.persist_events:
+            with SessionLocal() as session:
+                status = session.scalar(select(AgentRun.status).where(AgentRun.id == self.run_id))
+            if status == RunStatus.CANCELLED:
+                raise TrustCartError("RUN_CANCELLED", "The buyer cancelled this agent run", 409)
 
 
 def _record_tool(
@@ -312,11 +317,22 @@ async def place_order(wrapper: RunContextWrapper[CommerceRunContext]) -> dict[st
         idempotency_key=key,
     )
     ctx.checkout_created = True
+    cancelled = False
     if ctx.persist_events:
         with SessionLocal.begin() as session:
-            run = session.get(AgentRun, ctx.run_id)
+            run = session.scalar(
+                select(AgentRun).where(AgentRun.id == ctx.run_id).with_for_update()
+            )
             if run:
                 run.checkout_id = uuid.UUID(result["id"])
+                cancelled = run.status == RunStatus.CANCELLED
+    if cancelled:
+        await merchant_request(ctx, "POST", f"/v1/checkouts/{result['id']}/cancel")
+        raise TrustCartError(
+            "RUN_CANCELLED",
+            "The buyer cancelled while checkout was being reserved; the reservation was released",
+            409,
+        )
     _record_tool(
         ctx,
         "place_order",
@@ -352,7 +368,7 @@ async def request_purchase_approval(
     return result
 
 
-INSTRUCTIONS = """You are TrustCart's single commerce discovery agent.
+INSTRUCTIONS = """You are AgentAuth's single commerce discovery agent.
 Interpret the buyer's goal and use tools for facts. Never invent a price, total, SKU, user, grant,
 quote ID, or checkout state. You MUST obtain a successful canonical quote before purchase. Browse-only
 or comparative requests must never purchase. Ask a concise clarification when constraints are ambiguous.
@@ -364,7 +380,7 @@ a proposal, scheduled checkout, payment pending, paid, or simulated; Order creat
 
 def build_agent(reasoning_effort: str | None = None) -> Agent[CommerceRunContext]:
     return Agent[CommerceRunContext](
-        name="TrustCart Commerce Agent",
+        name="AgentAuth Commerce Agent",
         instructions=INSTRUCTIONS,
         model=settings.model_name,
         model_settings=ModelSettings(
@@ -389,7 +405,13 @@ async def run_commerce_agent(run_id: uuid.UUID) -> None:
         if run is None or run.status != RunStatus.QUEUED:
             return
         grant = session.get(DelegationGrant, run.grant_id)
-        if grant is None or grant.user_id != run.user_id or grant.status != "ACTIVE":
+        now = datetime.now(UTC)
+        if (
+            grant is None
+            or grant.user_id != run.user_id
+            or grant.status != "ACTIVE"
+            or not (grant.valid_from <= now < grant.expires_at)
+        ):
             run.status, run.error_code = RunStatus.FAILED, "GRANT_NOT_ACTIVE"
             return
         run.status = RunStatus.RUNNING
@@ -417,7 +439,7 @@ async def run_commerce_agent(run_id: uuid.UUID) -> None:
         final = str(result.final_output)
         with SessionLocal.begin() as session:
             run = session.get(AgentRun, run_id)
-            if run:
+            if run and run.status == RunStatus.RUNNING:
                 run.status = (
                     RunStatus.CHECKOUT_SCHEDULED if run.checkout_id else RunStatus.PROPOSAL_READY
                 )
@@ -428,7 +450,7 @@ async def run_commerce_agent(run_id: uuid.UUID) -> None:
     except Exception as exc:
         with SessionLocal.begin() as session:
             run = session.get(AgentRun, run_id)
-            if run:
+            if run and run.status == RunStatus.RUNNING:
                 run.status = RunStatus.FAILED
                 run.error_code = exc.code if isinstance(exc, TrustCartError) else "AGENT_RUN_FAILED"
                 run.error_detail = str(exc)[:1_000]

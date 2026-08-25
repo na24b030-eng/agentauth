@@ -1,6 +1,6 @@
 # Tool decisions
 
-The buildathon rewards AI judgment, not maximum AI usage. TrustCart separates probabilistic
+The buildathon rewards AI judgment, not maximum AI usage. AgentAuth separates probabilistic
 interpretation from deterministic authority.
 
 | Concern | Selected tool | Reason | Explicitly not used |

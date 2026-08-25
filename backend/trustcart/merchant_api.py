@@ -16,6 +16,7 @@ from .commerce import (
     checkout_out,
     create_checkout,
     create_quote,
+    quote_out,
     release_reservations,
 )
 from .config import get_settings
@@ -30,6 +31,7 @@ from .models import (
     GrantRequest,
     Inventory,
     Product,
+    Quote,
     RazorpayOrder,
     RegisteredAgent,
     User,
@@ -43,6 +45,7 @@ from .pop import (
 )
 from .schemas import (
     AgentCreate,
+    AgentIdentityOut,
     AgentOut,
     AuditEventOut,
     CheckoutCreate,
@@ -54,13 +57,14 @@ from .schemas import (
     GrantRequestCreate,
     LoginRequest,
     LoginResponse,
+    PaymentConfigOut,
     ProductOut,
     QuoteCreate,
     QuoteOut,
 )
 from .seed import DEMO_MERCHANT_ID
 
-app = FastAPI(title="TrustCart Merchant API", version="0.1.0")
+app = FastAPI(title="AgentAuth Merchant API", version="0.1.0")
 settings = get_settings()
 app.add_middleware(
     CORSMiddleware,
@@ -86,6 +90,16 @@ def health() -> dict:
         "service": "merchant-api",
         "razorpay_configured": bool(settings.razorpay_key_id and settings.razorpay_key_secret),
     }
+
+
+@app.get("/v1/payment-config", response_model=PaymentConfigOut)
+def payment_config() -> PaymentConfigOut:
+    """Expose only Razorpay's publishable Test Mode key to the browser."""
+    key_id = settings.razorpay_key_id.get_secret_value() if settings.razorpay_key_id else None
+    secret = (
+        settings.razorpay_key_secret.get_secret_value() if settings.razorpay_key_secret else None
+    )
+    return PaymentConfigOut(enabled=bool(key_id and secret), key_id=key_id)
 
 
 @app.post("/v1/demo/login", response_model=LoginResponse)
@@ -124,6 +138,21 @@ def register_agent(
     session.add(agent)
     session.commit()
     return AgentOut.model_validate(agent)
+
+
+@app.get("/v1/agents/current", response_model=AgentIdentityOut)
+def current_agent(
+    _: User = Depends(merchant_user), session: Session = Depends(get_session)
+) -> AgentIdentityOut:
+    agent = session.scalar(
+        select(RegisteredAgent)
+        .where(RegisteredAgent.status == "ACTIVE")
+        .order_by(RegisteredAgent.created_at.desc())
+        .limit(1)
+    )
+    if agent is None:
+        raise TrustCartError("AGENT_NOT_REGISTERED", "No active agent is registered", 404)
+    return AgentIdentityOut.model_validate(agent)
 
 
 @app.post("/v1/grant-requests")
@@ -250,6 +279,18 @@ def get_grant(
     return GrantOut.model_validate(grant)
 
 
+@app.get("/v1/grants", response_model=list[GrantOut])
+def list_grants(
+    user: User = Depends(merchant_user), session: Session = Depends(get_session)
+) -> list[GrantOut]:
+    rows = session.scalars(
+        select(DelegationGrant)
+        .where(DelegationGrant.user_id == user.id)
+        .order_by(DelegationGrant.created_at.desc())
+    ).all()
+    return [GrantOut.model_validate(row) for row in rows]
+
+
 @app.get("/v1/catalog/search", response_model=list[ProductOut])
 def search_catalog(
     principal: AgentPrincipal = Depends(require_agent_proof),
@@ -326,6 +367,25 @@ def quote(
     result = create_quote(session, principal, payload)
     session.commit()
     return result
+
+
+@app.get("/v1/quotes/{quote_id}", response_model=QuoteOut)
+def get_quote(
+    quote_id: uuid.UUID,
+    principal: AgentPrincipal = Depends(require_agent_proof),
+    session: Session = Depends(get_session),
+) -> QuoteOut:
+    row = session.get(Quote, quote_id)
+    if row is None or (row.user_id, row.agent_id, row.grant_id) != (
+        principal.user_id,
+        principal.agent_id,
+        principal.grant_id,
+    ):
+        raise TrustCartError("QUOTE_NOT_FOUND", "Quote was not found", 404)
+    grant = session.get(DelegationGrant, principal.grant_id)
+    assert grant is not None
+    remaining = grant.cumulative_limit_paise - grant.spent_paise - grant.held_paise
+    return quote_out(row, remaining)
 
 
 @app.post("/v1/checkouts", response_model=CheckoutOut)

@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import razorpay
-from sqlalchemy import delete, select, text
+from sqlalchemy import and_, delete, or_, select, text
 
 from .audit import AuditFact, append_audit
 from .commerce import release_reservations, settle_reservations
@@ -14,7 +14,7 @@ from .config import get_settings
 from .db import SessionLocal
 from .enums import CheckoutStatus, PaymentMode
 from .models import Checkout, ProofNonce, RazorpayOrder
-from .payments import create_test_order, find_order_by_receipt
+from .payments import create_test_order, find_order_by_receipt, provider_facts_match
 
 settings = get_settings()
 
@@ -40,7 +40,7 @@ def claim_due_execution(limit: int = 20) -> list[str]:
                     "checkout",
                     checkout.id,
                     "execution",
-                    "trustcart-worker",
+                    "agentauth-worker",
                     "execution.started",
                     "CANCEL_WINDOW_ELAPSED",
                     "The cancellation window elapsed; execution may begin.",
@@ -121,7 +121,7 @@ def execute_checkout(checkout_id: str) -> None:
                         "checkout",
                         checkout.id,
                         "recovery",
-                        "trustcart-worker",
+                        "agentauth-worker",
                         "order_create.ambiguous",
                         "ORDER_CREATE_RESPONSE_LOST",
                         "The create response was ambiguous; the stable receipt will be reconciled before any retry.",
@@ -162,12 +162,19 @@ def execute_checkout(checkout_id: str) -> None:
 
 def claim_reconciliation(limit: int = 20) -> list[tuple[str, str, int]]:
     now = datetime.now(UTC)
-    candidates = [CheckoutStatus.RECONCILING, CheckoutStatus.EXPIRING]
     with SessionLocal.begin() as session:
         rows = session.scalars(
             select(Checkout)
             .where(
-                Checkout.status.in_(candidates),
+                or_(
+                    Checkout.status.in_(
+                        [CheckoutStatus.RECONCILING, CheckoutStatus.EXPIRING]
+                    ),
+                    and_(
+                        Checkout.status == CheckoutStatus.ORDER_CREATING,
+                        Checkout.updated_at <= now - timedelta(seconds=30),
+                    ),
+                ),
                 (Checkout.next_retry_at.is_(None)) | (Checkout.next_retry_at <= now),
             )
             .order_by(Checkout.updated_at)
@@ -195,8 +202,12 @@ def reconcile_checkout(checkout_id: str, token: str, expected_version: int) -> N
     try:
         observation = find_order_by_receipt(settings, receipt)
         observed_at = datetime.now(UTC)
-    except Exception:
-        observation, observed_at = None, datetime.now(UTC)
+        observation_trusted = True
+        observation_error = None
+    except Exception as exc:
+        observation, observed_at = None, None
+        observation_trusted = False
+        observation_error = str(exc)[:500]
 
     with SessionLocal.begin() as session:
         checkout = session.scalar(
@@ -208,16 +219,69 @@ def reconcile_checkout(checkout_id: str, token: str, expected_version: int) -> N
             or checkout.version != expected_version
         ):
             return
+        if not observation_trusted:
+            checkout.last_error_code = "PROVIDER_OBSERVATION_UNTRUSTED"
+            checkout.last_error_detail = observation_error
+            checkout.next_retry_at = datetime.now(UTC) + timedelta(seconds=30)
+            checkout.version += 1
+            checkout.reconciliation_token = None
+            return
         checkout.provider_observed_at = observed_at
         local_order = session.scalar(
             select(RazorpayOrder).where(RazorpayOrder.checkout_id == checkout.id)
         )
         if observation:
-            if local_order:
-                local_order.razorpay_order_id = observation["id"]
-                local_order.status = str(observation.get("status", "created")).upper()
+            if local_order is None:
+                local_order = RazorpayOrder(
+                    checkout_id=checkout.id,
+                    receipt=checkout.receipt,
+                    amount_paise=checkout.amount_paise,
+                    currency=checkout.currency,
+                )
+                session.add(local_order)
+            local_order.razorpay_order_id = observation["id"]
+            local_order.status = str(observation.get("status", "created")).upper()
+            observed_amount = int(observation.get("amount") or 0)
+            observed_currency = str(observation.get("currency") or "")
+            if not provider_facts_match(
+                checkout.amount_paise,
+                checkout.currency,
+                observed_amount,
+                observed_currency,
+            ):
+                first_mismatch = checkout.last_error_code != "PROVIDER_ORDER_FACT_MISMATCH"
+                checkout.last_error_code = "PROVIDER_ORDER_FACT_MISMATCH"
+                checkout.last_error_detail = (
+                    f"Expected {checkout.amount_paise} {checkout.currency}; "
+                    f"observed {observed_amount} {observed_currency}"
+                )
+                checkout.next_retry_at = datetime.now(UTC) + timedelta(seconds=30)
+                checkout.version += 1
+                checkout.reconciliation_token = None
+                if first_mismatch:
+                    append_audit(
+                        session,
+                        AuditFact(
+                            "checkout",
+                            checkout.id,
+                            "recovery",
+                            "agentauth-worker",
+                            "order.fact_mismatch",
+                            "PROVIDER_ORDER_FACT_MISMATCH",
+                            "Provider order amount or currency did not match the canonical Checkout; settlement was blocked.",
+                            checkout_id=checkout.id,
+                        ),
+                    )
+                return
             if observation.get("status") == "paid":
                 settle_reservations(session, checkout, CheckoutStatus.PAID)
+            elif datetime.now(UTC) >= checkout.late_capture_grace_until:
+                release_reservations(
+                    session,
+                    checkout,
+                    CheckoutStatus.EXPIRED,
+                    "PROVIDER_CONFIRMED_UNPAID_AFTER_GRACE",
+                )
             else:
                 checkout.status = CheckoutStatus.PAYMENT_PENDING
                 checkout.version += 1
@@ -228,7 +292,7 @@ def reconcile_checkout(checkout_id: str, token: str, expected_version: int) -> N
                         "checkout",
                         checkout.id,
                         "recovery",
-                        "trustcart-worker",
+                        "agentauth-worker",
                         "order.recovered",
                         "ORDER_FOUND_BY_RECEIPT",
                         "The lost create response was recovered by the stable receipt without creating a second Order.",

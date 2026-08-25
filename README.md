@@ -1,6 +1,6 @@
-# TrustCart
+# AgentAuth
 
-TrustCart is a merchant-side, UAP-inspired authorization and checkout gateway for AI buyers. A
+AgentAuth is a merchant-side, UAP-inspired authorization and checkout gateway for AI buyers. A
 single OpenAI commerce agent may discover and propose products, while deterministic services own
 identity, prices, inventory, grants, money arithmetic, checkout state, Razorpay state and recovery.
 
@@ -41,6 +41,11 @@ npm run dev
 
 Open `http://localhost:3000`. Service health endpoints are at ports 8000 and 8001. The seeded login
 is `demo@trustcart.local` / `trustcart-demo`.
+
+The frontend uses the local services automatically on localhost. For a hosted build, set
+`NEXT_PUBLIC_MERCHANT_API_URL` and `NEXT_PUBLIC_AGENT_API_URL` before building. If those public API
+URLs are absent, the site deliberately renders a labelled preview fixture and makes no live-provider
+claim. The internal Python package remains `trustcart` to avoid a needless migration of identifiers.
 
 Migrations against an empty database:
 

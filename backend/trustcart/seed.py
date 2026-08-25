@@ -29,8 +29,10 @@ CATALOG = [
 def seed_demo(session: Session, settings: Settings) -> dict[str, str]:
     merchant = session.get(Merchant, DEMO_MERCHANT_ID)
     if merchant is None:
-        merchant = Merchant(id=DEMO_MERCHANT_ID, name="TrustCart Daily", currency="INR")
+        merchant = Merchant(id=DEMO_MERCHANT_ID, name="AgentAuth Daily", currency="INR")
         session.add(merchant)
+    else:
+        merchant.name = "AgentAuth Daily"
     user = session.get(User, DEMO_USER_ID)
     if user is None:
         user = User(
@@ -57,12 +59,14 @@ def seed_demo(session: Session, settings: Settings) -> dict[str, str]:
         agent = RegisteredAgent(
             id=DEMO_AGENT_ID,
             merchant_id=DEMO_MERCHANT_ID,
-            name="TrustCart Commerce Agent",
+            name="AgentAuth Commerce Agent",
             public_jwk=public_jwk,
             jwk_thumbprint=jwk_thumbprint(public_jwk),
             key_version=1,
         )
         session.add(agent)
+    else:
+        agent.name = "AgentAuth Commerce Agent"
     for sku, name, category, price, tags, stock in CATALOG:
         product = session.scalar(
             select(Product).where(Product.merchant_id == DEMO_MERCHANT_ID, Product.sku == sku)

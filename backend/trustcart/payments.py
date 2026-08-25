@@ -21,6 +21,19 @@ from .errors import AuthorizationError, TrustCartError
 from .models import Checkout, PaymentAttempt, RazorpayOrder, WebhookEvent
 
 
+def provider_facts_match(
+    expected_amount_paise: int,
+    expected_currency: str,
+    observed_amount_paise: int,
+    observed_currency: str,
+) -> bool:
+    """Money state may advance only when provider facts match the canonical Checkout."""
+    return (
+        observed_amount_paise == expected_amount_paise
+        and observed_currency == expected_currency
+    )
+
+
 def verify_razorpay_webhook(raw_body: bytes, signature: str, secrets: list[str]) -> bool:
     for secret in secrets:
         expected = hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
@@ -182,6 +195,10 @@ def process_webhook(session: Session, event: WebhookEvent) -> None:
             attempt.captured = bool(payment.get("captured")) or attempt.captured
 
     if event_type in {"payment.captured", "order.paid"}:
+        observed_amount = int(payment.get("amount") or order_payload.get("amount") or 0)
+        observed_currency = str(
+            payment.get("currency") or order_payload.get("currency") or ""
+        )
         if checkout.status == CheckoutStatus.EXPIRED:
             checkout.status = CheckoutStatus.LATE_CAPTURE_INCIDENT
             checkout.version += 1
@@ -196,6 +213,34 @@ def process_webhook(session: Session, event: WebhookEvent) -> None:
                     action="late_capture.detected",
                     reason_code="LATE_CAPTURE_AFTER_RELEASE",
                     explanation="A capture arrived after inventory and allowance were released; manual compensation is required.",
+                    data={"event_id": event.provider_event_id},
+                ),
+            )
+        elif not provider_facts_match(
+            checkout.amount_paise,
+            checkout.currency,
+            observed_amount,
+            observed_currency,
+        ):
+            checkout.status = CheckoutStatus.RECONCILING
+            checkout.last_error_code = "PROVIDER_PAYMENT_FACT_MISMATCH"
+            checkout.last_error_detail = (
+                f"Expected {checkout.amount_paise} {checkout.currency}; "
+                f"observed {observed_amount} {observed_currency}"
+            )
+            checkout.next_retry_at = datetime.now(UTC)
+            checkout.version += 1
+            append_audit(
+                session,
+                AuditFact(
+                    aggregate_type="checkout",
+                    aggregate_id=checkout.id,
+                    checkout_id=checkout.id,
+                    layer="recovery",
+                    actor="razorpay-webhook",
+                    action="payment.fact_mismatch",
+                    reason_code="PROVIDER_PAYMENT_FACT_MISMATCH",
+                    explanation="The captured payment facts did not match the canonical Checkout; settlement was blocked for reconciliation.",
                     data={"event_id": event.provider_event_id},
                 ),
             )

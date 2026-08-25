@@ -41,6 +41,14 @@ class AgentOut(StrictModel):
     status: str
 
 
+class AgentIdentityOut(StrictModel):
+    id: uuid.UUID
+    name: str
+    jwk_thumbprint: str
+    key_version: int
+    status: str
+
+
 class GrantRequestCreate(StrictModel):
     user_id: uuid.UUID
     allowed_categories: list[str] = Field(min_length=1)
@@ -167,6 +175,12 @@ class AgentRunOut(StrictModel):
     tool_call_count: int
     turn_count: int
     error_code: str | None
+
+
+class PaymentConfigOut(StrictModel):
+    enabled: bool
+    key_id: str | None = None
+    environment: Literal["test"] = "test"
 
 
 class AuditEventOut(StrictModel):
