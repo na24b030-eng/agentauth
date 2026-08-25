@@ -39,8 +39,8 @@ export default function Home() {
     <main className="app-shell">
       <header className="topbar">
         <div className="brand-lockup">
-          <span className="brand-mark">T</span>
-          <div><strong>TrustCart</strong><span>Agentic commerce, bounded by design</span></div>
+          <span className="brand-mark">A</span>
+          <div><strong>AgentAuth</strong><span>Agentic commerce, bounded by design</span></div>
         </div>
         <div className="environment"><i /> Test environment</div>
         <button className="avatar" aria-label="Open user menu">DK</button>
@@ -53,7 +53,7 @@ export default function Home() {
           <button className={`rail-item ${view === 'delegations' ? 'active' : ''}`} onClick={() => setView('delegations')}><span>◇</span>Delegations</button>
           <button className={`rail-item ${view === 'developer' ? 'active' : ''}`} onClick={() => setView('developer')}><span>⌘</span>Developer</button>
           <div className="rail-bottom">
-            <div className="agent-mini"><span>AI</span><div><b>TrustCart buyer</b><small>Key verified</small></div></div>
+            <div className="agent-mini"><span>AI</span><div><b>AgentAuth buyer</b><small>Key verified</small></div></div>
           </div>
         </nav>
 
@@ -97,8 +97,8 @@ export default function Home() {
             <div className="section-kicker">USER-ISSUED AUTHORITY</div>
             <h1>Delegation consent</h1><p>Immutable scope approved for one registered agent key.</p>
             <div className="consent-card">
-              <div className="consent-agent"><span>AI</span><div><b>TrustCart Commerce Agent v1</b><code>SHA256 7B:31:9F:2A:···:C8</code></div><i>ACTIVE</i></div>
-              <dl><div><dt>Merchant</dt><dd>TrustCart Daily</dd></div><div><dt>Categories</dt><dd>Dairy, staples, bakery, produce</dd></div><div><dt>Per order</dt><dd>₹1,000</dd></div><div><dt>Cumulative</dt><dd>₹3,000</dd></div><div><dt>Expires</dt><dd>31 Aug 2026</dd></div><div><dt>Auto-execute</dt><dd>Enabled</dd></div></dl>
+              <div className="consent-agent"><span>AI</span><div><b>AgentAuth Commerce Agent v1</b><code>SHA256 7B:31:9F:2A:···:C8</code></div><i>ACTIVE</i></div>
+              <dl><div><dt>Merchant</dt><dd>AgentAuth Daily</dd></div><div><dt>Categories</dt><dd>Dairy, staples, bakery, produce</dd></div><div><dt>Per order</dt><dd>₹1,000</dd></div><div><dt>Cumulative</dt><dd>₹3,000</dd></div><div><dt>Expires</dt><dd>31 Aug 2026</dd></div><div><dt>Auto-execute</dt><dd>Enabled</dd></div></dl>
               <div className="demo-disclosure"><b>Demo identity</b><p>This consent proves application authorization. It is not bank, biometric or device identity.</p></div>
               <button className="danger-button">Revoke for new purchases</button>
             </div>
@@ -122,7 +122,7 @@ export default function Home() {
           <div className="trust-head"><div><span className="pulse"><i /></span><div><h2>Trust Inspector</h2><p>Every money action, explained</p></div></div><button aria-label="Close inspector">×</button></div>
           <div className="trust-section">
             <div className="trust-label">ACTIVE DELEGATION <span>VERIFIED</span></div>
-            <div className="fingerprint"><div className="fingerprint-icon">⌘</div><div><b>TrustCart Buyer v1</b><code>7B:31:9F:2A:···:C8</code></div></div>
+            <div className="fingerprint"><div className="fingerprint-icon">⌘</div><div><b>AgentAuth Buyer v1</b><code>7B:31:9F:2A:···:C8</code></div></div>
             <div className="allowance"><div><span>Allowance used</span><strong>₹842 <small>of ₹3,000</small></strong></div><div className="allowance-track"><i /></div><p>₹2,158 remaining · expires in 6 days</p></div>
           </div>
           <div className="trust-section">

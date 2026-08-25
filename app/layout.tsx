@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'TrustCart — Agentic commerce, bounded by design',
+  title: 'AgentAuth — Agentic commerce, bounded by design',
   description: 'A UAP-inspired authorization and checkout gateway for AI buyers.',
 };
 
