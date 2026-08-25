@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from trustcart.agent_api import start_run
+from trustcart.auth import merchant_user
 from trustcart.enums import PaymentMode, RunStatus
 from trustcart.merchant_api import app
 from trustcart.pop import require_agent_proof
@@ -25,6 +26,15 @@ def test_quote_readback_stays_behind_agent_pop() -> None:
 def test_publishable_payment_config_is_not_a_pop_route() -> None:
     route = next(route for route in app.routes if route.path == "/v1/payment-config")
     dependencies = {dependency.call for dependency in route.dependant.dependencies}
+    assert require_agent_proof not in dependencies
+
+
+def test_failure_fixture_requires_user_session_and_not_agent_pop() -> None:
+    route = next(
+        route for route in app.routes if route.path == "/v1/developer/faults/{fault_key}"
+    )
+    dependencies = {dependency.call for dependency in route.dependant.dependencies}
+    assert merchant_user in dependencies
     assert require_agent_proof not in dependencies
 
 

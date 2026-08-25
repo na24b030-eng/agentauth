@@ -12,6 +12,7 @@ from .audit import AuditFact, append_audit
 from .commerce import release_reservations, settle_reservations
 from .config import get_settings
 from .db import SessionLocal
+from .demo_faults import consume_demo_fault
 from .enums import CheckoutStatus, PaymentMode
 from .models import Checkout, ProofNonce, RazorpayOrder
 from .payments import create_test_order, find_order_by_receipt, provider_facts_match
@@ -86,8 +87,11 @@ def execute_checkout(checkout_id: str) -> None:
             session.add(local_order)
 
     try:
+        drop_response = settings.fault_drop_order_response or consume_demo_fault(
+            "DROP_ORDER_CREATE_RESPONSE"
+        )
         provider_order = create_test_order(settings, checkout)
-        if settings.fault_drop_order_response:
+        if drop_response:
             raise ConnectionError("fault injection: successful provider response discarded")
     except razorpay.errors.BadRequestError as exc:
         with SessionLocal.begin() as session:

@@ -139,6 +139,15 @@ class ProofNonce(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
 
 
+class DemoFault(TimestampMixin, Base):
+    __tablename__ = "demo_faults"
+    key: Mapped[str] = mapped_column(String(80), primary_key=True)
+    armed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    armed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    armed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class Product(TimestampMixin, Base):
     __tablename__ = "products"
     __table_args__ = (UniqueConstraint("merchant_id", "sku", name="uq_product_merchant_sku"),)

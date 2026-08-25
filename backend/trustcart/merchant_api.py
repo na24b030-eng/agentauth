@@ -22,6 +22,7 @@ from .commerce import (
 from .config import get_settings
 from .crypto import canonical_json, jwk_thumbprint, load_private_key, sha256_hex
 from .db import get_session
+from .demo_faults import set_demo_fault
 from .enums import CheckoutStatus
 from .errors import AuthorizationError, TrustCartError
 from .models import (
@@ -52,6 +53,8 @@ from .schemas import (
     CheckoutOut,
     DeliveryOptionOut,
     DeliveryOptionRequest,
+    DemoFaultOut,
+    DemoFaultUpdate,
     GrantApproval,
     GrantOut,
     GrantRequestCreate,
@@ -100,6 +103,24 @@ def payment_config() -> PaymentConfigOut:
         settings.razorpay_key_secret.get_secret_value() if settings.razorpay_key_secret else None
     )
     return PaymentConfigOut(enabled=bool(key_id and secret), key_id=key_id)
+
+
+@app.post("/v1/developer/faults/{fault_key}", response_model=DemoFaultOut)
+def update_demo_fault(
+    fault_key: str,
+    payload: DemoFaultUpdate,
+    user: User = Depends(merchant_user),
+    session: Session = Depends(get_session),
+) -> DemoFaultOut:
+    if settings.environment == "production":
+        raise AuthorizationError(
+            "DEVELOPER_FIXTURES_DISABLED",
+            "Failure fixtures are disabled in production environments",
+            403,
+        )
+    row = set_demo_fault(session, fault_key, armed=payload.armed, user_id=user.id)
+    session.commit()
+    return DemoFaultOut.model_validate(row)
 
 
 @app.post("/v1/demo/login", response_model=LoginResponse)

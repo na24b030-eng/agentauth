@@ -47,6 +47,11 @@ The frontend uses the local services automatically on localhost. For a hosted bu
 URLs are absent, the site deliberately renders a labelled preview fixture and makes no live-provider
 claim. The internal Python package remains `trustcart` to avoid a needless migration of identifiers.
 
+The Failure Lab can arm two one-shot, database-backed test fixtures: discarding the next successful
+Razorpay Order-create response (so the worker must recover by receipt), and returning a typed model
+timeout on the next agent run. They are user-session protected and rejected when
+`TRUSTCART_ENVIRONMENT=production`.
+
 Migrations against an empty database:
 
 ```bash

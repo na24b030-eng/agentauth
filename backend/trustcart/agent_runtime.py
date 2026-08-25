@@ -22,6 +22,7 @@ from sqlalchemy import func, select
 from .config import get_settings
 from .crypto import create_proof, load_private_key, sha256_hex
 from .db import SessionLocal
+from .demo_faults import consume_demo_fault
 from .enums import RunStatus
 from .errors import TrustCartError
 from .models import AgentRun, AgentToolEvent, DelegationGrant
@@ -426,6 +427,12 @@ async def run_commerce_agent(run_id: uuid.UUID) -> None:
         )
         message = run.user_message
     try:
+        if consume_demo_fault("FORCE_MODEL_TIMEOUT"):
+            raise TrustCartError(
+                "MODEL_TIMEOUT_INJECTED",
+                "The developer fixture forced a typed model-timeout outcome",
+                408,
+            )
         if not settings.openai_api_key:
             raise TrustCartError(
                 "OPENAI_NOT_CONFIGURED",

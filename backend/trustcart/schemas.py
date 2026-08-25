@@ -183,6 +183,17 @@ class PaymentConfigOut(StrictModel):
     environment: Literal["test"] = "test"
 
 
+class DemoFaultUpdate(StrictModel):
+    armed: bool
+
+
+class DemoFaultOut(StrictModel):
+    key: str
+    armed: bool
+    armed_at: datetime | None
+    consumed_at: datetime | None
+
+
 class AuditEventOut(StrictModel):
     id: int
     checkout_id: uuid.UUID | None
