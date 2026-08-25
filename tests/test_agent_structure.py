@@ -1,8 +1,16 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import httpx
+import pytest
 from agents import RunContextWrapper
-from trustcart.agent_runtime import CommerceRunContext, build_agent, place_order
+from trustcart.agent_runtime import (
+    CommerceRunContext,
+    build_agent,
+    place_order,
+    replay_nonce_fixture,
+)
+from trustcart.crypto import generate_p256_private_key, private_key_to_pem
 
 
 def context(*, quoted: bool, auto_execute: bool) -> RunContextWrapper[CommerceRunContext]:
@@ -53,4 +61,41 @@ def test_single_agent_contains_only_bounded_commerce_tools() -> None:
         "quote_cart",
         "place_order",
         "request_purchase_approval",
+    }
+
+
+@pytest.mark.asyncio
+async def test_nonce_replay_fixture_reuses_exact_proof_and_reports_rejection() -> None:
+    seen_nonces: list[str] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        seen_nonces.append(request.headers["X-Agent-Nonce"])
+        if len(seen_nonces) == 1:
+            return httpx.Response(200, json=[])
+        return httpx.Response(
+            409,
+            json={"code": "PROOF_REPLAYED", "message": "Proof nonce was already used"},
+        )
+
+    ctx = CommerceRunContext(
+        run_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
+        agent_id=uuid.uuid4(),
+        grant_id=uuid.uuid4(),
+        grant_digest="d" * 64,
+        auto_execute=True,
+        payment_mode="DELEGATED_DEBIT_SIMULATOR",
+        transport=httpx.MockTransport(handler),
+        signing_key_pem=private_key_to_pem(generate_p256_private_key()),
+        persist_events=False,
+    )
+
+    result = await replay_nonce_fixture(ctx)
+
+    assert seen_nonces[0] == seen_nonces[1]
+    assert result == {
+        "first_status": 200,
+        "second_status": 409,
+        "second_code": "PROOF_REPLAYED",
+        "proof_replayed": True,
     }

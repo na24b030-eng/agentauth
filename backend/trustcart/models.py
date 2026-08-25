@@ -269,6 +269,7 @@ class Checkout(TimestampMixin, Base):
     next_retry_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
     last_error_code: Mapped[str | None] = mapped_column(String(80))
     last_error_detail: Mapped[str | None] = mapped_column(Text)
+    test_fixture_applied: Mapped[bool] = mapped_column(Boolean, default=False)
     version: Mapped[int] = mapped_column(Integer, default=1)
     quote: Mapped[Quote] = relationship()
 

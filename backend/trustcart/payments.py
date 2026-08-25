@@ -249,6 +249,10 @@ def process_webhook(session: Session, event: WebhookEvent) -> None:
             order.status = "PAID"
     elif event_type == "payment.failed":
         # A failed attempt is evidence, not proof that the Order can never be captured.
+        already_settled = checkout.status in {
+            CheckoutStatus.PAID,
+            CheckoutStatus.SIMULATED_SETTLED,
+        }
         append_audit(
             session,
             AuditFact(
@@ -258,8 +262,16 @@ def process_webhook(session: Session, event: WebhookEvent) -> None:
                 layer="execution",
                 actor="razorpay-webhook",
                 action="payment.attempt_failed",
-                reason_code="PAYMENT_ATTEMPT_FAILED_RESERVATION_RETAINED",
-                explanation="The attempt failed, but Order-level reservations remain held for a possible later capture.",
+                reason_code=(
+                    "OUT_OF_ORDER_FAILURE_IGNORED"
+                    if already_settled
+                    else "PAYMENT_ATTEMPT_FAILED_RESERVATION_RETAINED"
+                ),
+                explanation=(
+                    "A stale failure arrived after settlement and cannot reverse the captured payment."
+                    if already_settled
+                    else "The attempt failed, but Order-level reservations remain held for a possible later capture."
+                ),
                 data={"payment_id": payment_id},
             ),
         )

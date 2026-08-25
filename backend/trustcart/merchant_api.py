@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated
@@ -10,6 +12,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
+from .audit import AuditFact, append_audit
 from .auth import issue_demo_token, merchant_user, verify_passcode
 from .commerce import (
     DELIVERY_OPTIONS,
@@ -23,7 +26,7 @@ from .config import get_settings
 from .crypto import canonical_json, jwk_thumbprint, load_private_key, sha256_hex
 from .db import get_session
 from .demo_faults import set_demo_fault
-from .enums import CheckoutStatus
+from .enums import CheckoutStatus, PaymentMode
 from .errors import AuthorizationError, TrustCartError
 from .models import (
     AuditEvent,
@@ -64,6 +67,8 @@ from .schemas import (
     ProductOut,
     QuoteCreate,
     QuoteOut,
+    WebhookFixtureOut,
+    WebhookFixtureRequest,
 )
 from .seed import DEMO_MERCHANT_ID
 
@@ -121,6 +126,134 @@ def update_demo_fault(
     row = set_demo_fault(session, fault_key, armed=payload.armed, user_id=user.id)
     session.commit()
     return DemoFaultOut.model_validate(row)
+
+
+@app.post("/v1/developer/webhook-fixture", response_model=WebhookFixtureOut)
+def run_webhook_fixture(
+    payload: WebhookFixtureRequest,
+    user: User = Depends(merchant_user),
+    session: Session = Depends(get_session),
+) -> WebhookFixtureOut:
+    """Apply a disclosed captured→stale-failed→duplicate-failed Test Mode fixture."""
+    if settings.environment == "production":
+        raise AuthorizationError(
+            "DEVELOPER_FIXTURES_DISABLED",
+            "Failure fixtures are disabled in production environments",
+            403,
+        )
+    if not settings.razorpay_webhook_secret:
+        raise TrustCartError(
+            "WEBHOOK_SECRET_NOT_CONFIGURED",
+            "A Razorpay Test Mode webhook secret is required for this fixture",
+            503,
+        )
+    checkout = session.scalar(
+        select(Checkout).where(Checkout.id == payload.checkout_id).with_for_update()
+    )
+    if checkout is None or checkout.user_id != user.id:
+        raise TrustCartError("CHECKOUT_NOT_FOUND", "Checkout was not found", 404)
+    order = session.scalar(select(RazorpayOrder).where(RazorpayOrder.checkout_id == checkout.id))
+    if (
+        checkout.payment_mode != PaymentMode.RAZORPAY_PAYMENT_LAB
+        or order is None
+        or order.razorpay_order_id is None
+    ):
+        raise TrustCartError(
+            "RAZORPAY_ORDER_REQUIRED",
+            "The fixture requires a real Test Mode Order bound to this Checkout",
+            409,
+        )
+    if checkout.test_fixture_applied:
+        return WebhookFixtureOut(
+            checkout=checkout_out(checkout, order.razorpay_order_id),
+            created_events=0,
+            duplicate_deduplicated=True,
+            disclosure="Previously applied signed developer fixture; not a provider payment.",
+        )
+    if checkout.status not in {
+        CheckoutStatus.PAYMENT_PENDING,
+        CheckoutStatus.EXPIRING,
+        CheckoutStatus.RECONCILING,
+    }:
+        raise TrustCartError(
+            "CHECKOUT_NOT_FIXTURE_ELIGIBLE",
+            "The Checkout is not waiting for a Razorpay payment",
+            409,
+        )
+
+    checkout.test_fixture_applied = True
+    append_audit(
+        session,
+        AuditFact(
+            aggregate_type="checkout",
+            aggregate_id=checkout.id,
+            checkout_id=checkout.id,
+            layer="recovery",
+            actor=f"developer:{user.id}",
+            action="webhook.fixture_started",
+            reason_code="DISCLOSED_TEST_WEBHOOK_SEQUENCE",
+            explanation="A signed developer fixture will test captured, stale-failed, and duplicate webhook convergence; it is not a provider payment.",
+        ),
+    )
+
+    captured_payment_id = f"pay_fixture_capture_{checkout.id.hex}"
+    failed_payment_id = f"pay_fixture_failed_{checkout.id.hex}"
+    failed_id = f"fixture-failed-{checkout.id.hex}"
+    captured_id = f"fixture-captured-{checkout.id.hex}"
+    order_entity = {
+        "id": order.razorpay_order_id,
+        "receipt": checkout.receipt,
+        "amount": checkout.amount_paise,
+        "currency": checkout.currency,
+        "status": "paid",
+    }
+
+    def fixture_payload(event_type: str, payment_id: str, *, captured: bool) -> dict:
+        return {
+            "event": event_type,
+            "payload": {
+                "payment": {
+                    "entity": {
+                        "id": payment_id,
+                        "order_id": order.razorpay_order_id,
+                        "amount": checkout.amount_paise,
+                        "currency": checkout.currency,
+                        "status": "captured" if captured else "failed",
+                        "captured": captured,
+                        "error_code": None if captured else "BAD_REQUEST_ERROR",
+                        "error_description": None if captured else "Disclosed developer fixture",
+                    }
+                },
+                "order": {"entity": order_entity},
+            },
+        }
+
+    secret = settings.razorpay_webhook_secret.get_secret_value()
+
+    def ingest(event_id: str, body: dict) -> bool:
+        raw = canonical_json(body)
+        signature = hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
+        event, created = persist_webhook(session, raw, signature, event_id, settings)
+        if created:
+            process_webhook(session, event)
+        return created
+
+    created_events = int(
+        ingest(
+            captured_id,
+            fixture_payload("payment.captured", captured_payment_id, captured=True),
+        )
+    )
+    failed_payload = fixture_payload("payment.failed", failed_payment_id, captured=False)
+    created_events += int(ingest(failed_id, failed_payload))
+    duplicate_created = ingest(failed_id, failed_payload)
+    session.commit()
+    return WebhookFixtureOut(
+        checkout=checkout_out(checkout, order.razorpay_order_id),
+        created_events=created_events,
+        duplicate_deduplicated=not duplicate_created,
+        disclosure="Signed developer fixture applied; this PAID state is not a provider payment.",
+    )
 
 
 @app.post("/v1/demo/login", response_model=LoginResponse)

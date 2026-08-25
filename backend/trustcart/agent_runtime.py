@@ -157,6 +157,58 @@ async def merchant_request(
     return data
 
 
+async def replay_nonce_fixture(ctx: CommerceRunContext) -> dict[str, Any]:
+    """Send one valid proof twice to demonstrate durable replay rejection."""
+    configured_key = ctx.signing_key_pem or (
+        settings.agent_private_key_pem.get_secret_value()
+        if settings.agent_private_key_pem
+        else None
+    )
+    if not configured_key:
+        raise TrustCartError("AGENT_KEY_NOT_CONFIGURED", "Agent signing key is missing", 503)
+    path = "/v1/catalog/search"
+    query = [("query", "milk"), ("limit", "1")]
+    body = b""
+    proof = create_proof(
+        load_private_key(configured_key),
+        method="GET",
+        path=path,
+        query_items=query,
+        body=body,
+        timestamp=int(time.time()),
+        grant_id=str(ctx.grant_id),
+        grant_digest=ctx.grant_digest,
+    )
+    headers = {
+        "X-Agent-Id": str(ctx.agent_id),
+        "X-Grant-Id": str(ctx.grant_id),
+        "X-Agent-Timestamp": str(proof.timestamp),
+        "X-Agent-Nonce": proof.nonce,
+        "X-Body-SHA256": proof.body_sha256,
+        "X-Agent-Signature": proof.signature,
+    }
+    async with httpx.AsyncClient(
+        base_url=settings.merchant_api_url,
+        timeout=5,
+        transport=ctx.transport,
+    ) as client:
+        first = await client.get(path, params=query, headers=headers)
+        second = await client.get(path, params=query, headers=headers)
+    try:
+        second_data = second.json()
+    except ValueError:
+        second_data = {}
+    second_code = second_data.get("code")
+    return {
+        "first_status": first.status_code,
+        "second_status": second.status_code,
+        "second_code": second_code,
+        "proof_replayed": first.is_success
+        and second.status_code == 409
+        and second_code == "PROOF_REPLAYED",
+    }
+
+
 async def create_signed_grant_request(agent_id: uuid.UUID, payload: dict[str, Any]) -> Any:
     """Submit a TC-AGENT-V1 request before any delegation grant exists."""
     if not settings.agent_private_key_pem:

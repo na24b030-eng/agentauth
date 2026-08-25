@@ -362,6 +362,7 @@ def checkout_out(checkout: Checkout, razorpay_order_id: str | None = None) -> Ch
         payment_deadline_at=checkout.payment_deadline_at,
         version=checkout.version,
         razorpay_order_id=razorpay_order_id,
+        test_fixture_applied=checkout.test_fixture_applied,
         recovery_url=f"/v1/checkouts/{checkout.id}",
     )
 

@@ -3,8 +3,9 @@ from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
+from trustcart.agent_api import app as agent_app
 from trustcart.agent_api import start_run
-from trustcart.auth import merchant_user
+from trustcart.auth import agent_user, merchant_user
 from trustcart.enums import PaymentMode, RunStatus
 from trustcart.merchant_api import app
 from trustcart.pop import require_agent_proof
@@ -32,6 +33,24 @@ def test_publishable_payment_config_is_not_a_pop_route() -> None:
 def test_failure_fixture_requires_user_session_and_not_agent_pop() -> None:
     route = next(
         route for route in app.routes if route.path == "/v1/developer/faults/{fault_key}"
+    )
+    dependencies = {dependency.call for dependency in route.dependant.dependencies}
+    assert merchant_user in dependencies
+    assert require_agent_proof not in dependencies
+
+
+def test_nonce_replay_fixture_requires_agent_user_session() -> None:
+    route = next(
+        route for route in agent_app.routes if route.path == "/v1/developer/replay-nonce"
+    )
+    dependencies = {dependency.call for dependency in route.dependant.dependencies}
+    assert agent_user in dependencies
+    assert require_agent_proof not in dependencies
+
+
+def test_webhook_fixture_requires_merchant_user_session() -> None:
+    route = next(
+        route for route in app.routes if route.path == "/v1/developer/webhook-fixture"
     )
     dependencies = {dependency.call for dependency in route.dependant.dependencies}
     assert merchant_user in dependencies

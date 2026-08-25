@@ -17,6 +17,7 @@ from .agent_runtime import (
     CommerceRunContext,
     create_signed_grant_request,
     merchant_request,
+    replay_nonce_fixture,
     run_commerce_agent,
 )
 from .auth import agent_user
@@ -25,7 +26,15 @@ from .db import SessionLocal, get_session
 from .enums import RunStatus
 from .errors import AuthorizationError, TrustCartError
 from .models import AgentRun, AgentToolEvent, DelegationGrant, RegisteredAgent, User
-from .schemas import AgentRunCreate, AgentRunOut, CheckoutOut, GrantRequestCreate, QuoteOut
+from .schemas import (
+    AgentRunCreate,
+    AgentRunOut,
+    CheckoutOut,
+    GrantRequestCreate,
+    NonceReplayOut,
+    NonceReplayRequest,
+    QuoteOut,
+)
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -111,6 +120,41 @@ def health() -> dict:
         "model": settings.model_name,
         "openai_configured": bool(settings.openai_api_key),
     }
+
+
+@app.post("/v1/developer/replay-nonce", response_model=NonceReplayOut)
+async def replay_nonce(
+    payload: NonceReplayRequest,
+    user: User = Depends(agent_user),
+    session: Session = Depends(get_session),
+) -> NonceReplayOut:
+    if settings.environment == "production":
+        raise AuthorizationError(
+            "DEVELOPER_FIXTURES_DISABLED",
+            "Failure fixtures are disabled in production environments",
+            403,
+        )
+    grant = session.get(DelegationGrant, payload.grant_id)
+    now = datetime.now(UTC)
+    if (
+        grant is None
+        or grant.user_id != user.id
+        or grant.status != "ACTIVE"
+        or not (grant.valid_from <= now < grant.expires_at)
+    ):
+        raise AuthorizationError("GRANT_NOT_ACTIVE", "An active grant is required", 403)
+    context = CommerceRunContext(
+        uuid.uuid4(),
+        user.id,
+        grant.agent_id,
+        grant.id,
+        grant.immutable_digest,
+        grant.auto_execute,
+        "DELEGATED_DEBIT_SIMULATOR",
+        persist_events=False,
+    )
+    session.rollback()
+    return NonceReplayOut.model_validate(await replay_nonce_fixture(context))
 
 
 @app.post("/v1/grant-requests")

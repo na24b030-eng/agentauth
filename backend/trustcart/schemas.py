@@ -157,6 +157,7 @@ class CheckoutOut(StrictModel):
     payment_deadline_at: datetime
     version: int
     razorpay_order_id: str | None = None
+    test_fixture_applied: bool
     recovery_url: str
 
 
@@ -192,6 +193,28 @@ class DemoFaultOut(StrictModel):
     armed: bool
     armed_at: datetime | None
     consumed_at: datetime | None
+
+
+class NonceReplayRequest(StrictModel):
+    grant_id: uuid.UUID
+
+
+class NonceReplayOut(StrictModel):
+    first_status: int
+    second_status: int
+    second_code: str | None
+    proof_replayed: bool
+
+
+class WebhookFixtureRequest(StrictModel):
+    checkout_id: uuid.UUID
+
+
+class WebhookFixtureOut(StrictModel):
+    checkout: CheckoutOut
+    created_events: int
+    duplicate_deduplicated: bool
+    disclosure: str
 
 
 class AuditEventOut(StrictModel):

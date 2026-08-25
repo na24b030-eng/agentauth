@@ -19,10 +19,11 @@ Webhook and worker apply transactions both lock the Checkout row. The worker add
 random reconciliation token and expected version after the external Razorpay observation. If a
 webhook won during that network gap, the stale observation has no effect.
 
-`payment.failed` is an attempt fact, not an Order terminal state. Reservations remain held. Only a
-capture/paid observation settles them, while expiry requires a provider-confirmed unpaid result after
-the grace period. A later capture after release is visible as `LATE_CAPTURE_INCIDENT`; it never
-silently consumes unavailable inventory.
+`payment.failed` is an attempt fact, not an Order terminal state. Before settlement, reservations
+remain held. A stale failure delivered after `PAID` is audited and ignored; it cannot reverse a
+capture. Only a capture/paid observation settles reservations, while expiry requires a
+provider-confirmed unpaid result after the grace period. A later capture after release is visible as
+`LATE_CAPTURE_INCIDENT`; it never silently consumes unavailable inventory.
 
 ## Resource effects
 
