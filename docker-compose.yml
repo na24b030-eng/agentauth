@@ -1,0 +1,71 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: trustcart
+      POSTGRES_USER: trustcart
+      POSTGRES_PASSWORD: trustcart
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trustcart -d trustcart"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - trustcart_pg:/var/lib/postgresql/data
+    ports: ["5432:5432"]
+
+  migrate:
+    build: .
+    command: ["alembic", "upgrade", "head"]
+    environment: &shared
+      TRUSTCART_DATABASE_URL: postgresql+psycopg://trustcart:trustcart@postgres:5432/trustcart
+      TRUSTCART_FRONTEND_ORIGIN: http://localhost:3000
+      TRUSTCART_MERCHANT_API_URL: http://merchant-api:8000
+      TRUSTCART_AGENT_API_URL: http://agent-api:8001
+    depends_on:
+      postgres: {condition: service_healthy}
+    restart: "no"
+
+  merchant-api:
+    build: .
+    environment:
+      <<: *shared
+      TRUSTCART_SERVICE_ROLE: merchant-api
+      PORT: 8000
+      TRUSTCART_DEMO_AUTH_PRIVATE_KEY_PEM: ${TRUSTCART_DEMO_AUTH_PRIVATE_KEY_PEM}
+      TRUSTCART_DEMO_AUTH_PUBLIC_KEY_PEM: ${TRUSTCART_DEMO_AUTH_PUBLIC_KEY_PEM}
+      TRUSTCART_RAZORPAY_KEY_ID: ${TRUSTCART_RAZORPAY_KEY_ID:-}
+      TRUSTCART_RAZORPAY_KEY_SECRET: ${TRUSTCART_RAZORPAY_KEY_SECRET:-}
+      TRUSTCART_RAZORPAY_WEBHOOK_SECRET: ${TRUSTCART_RAZORPAY_WEBHOOK_SECRET:-}
+      TRUSTCART_RAZORPAY_PREVIOUS_WEBHOOK_SECRET: ${TRUSTCART_RAZORPAY_PREVIOUS_WEBHOOK_SECRET:-}
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    ports: ["8000:8000"]
+
+  agent-api:
+    build: .
+    environment:
+      <<: *shared
+      TRUSTCART_SERVICE_ROLE: agent-api
+      PORT: 8001
+      TRUSTCART_DEMO_AUTH_PUBLIC_KEY_PEM: ${TRUSTCART_DEMO_AUTH_PUBLIC_KEY_PEM}
+      TRUSTCART_AGENT_PRIVATE_KEY_PEM: ${TRUSTCART_AGENT_PRIVATE_KEY_PEM}
+      TRUSTCART_OPENAI_API_KEY: ${TRUSTCART_OPENAI_API_KEY:-}
+      TRUSTCART_MODEL_NAME: ${TRUSTCART_MODEL_NAME:-gpt-5.5-2026-04-23}
+      TRUSTCART_MODEL_REASONING_EFFORT: ${TRUSTCART_MODEL_REASONING_EFFORT:-low}
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+    ports: ["8001:8001"]
+
+  worker:
+    build: .
+    environment:
+      <<: *shared
+      TRUSTCART_SERVICE_ROLE: worker
+      TRUSTCART_RAZORPAY_KEY_ID: ${TRUSTCART_RAZORPAY_KEY_ID:-}
+      TRUSTCART_RAZORPAY_KEY_SECRET: ${TRUSTCART_RAZORPAY_KEY_SECRET:-}
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+
+volumes:
+  trustcart_pg:
