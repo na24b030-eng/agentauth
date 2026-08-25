@@ -1,7 +1,7 @@
 # AgentAuth
 
 AgentAuth is a merchant-side, UAP-inspired authorization and checkout gateway for AI buyers. A
-single OpenAI commerce agent may discover and propose products, while deterministic services own
+single Gemini commerce agent may discover and propose products, while deterministic services own
 identity, prices, inventory, grants, money arithmetic, checkout state, Razorpay state and recovery.
 
 This is a Razorpay Buildathon project. It is not NPCI UAP compliance, a bank identity system, or a
@@ -10,7 +10,7 @@ real autonomous UPI debit. `RAZORPAY_PAYMENT_LAB` creates real Test Mode Orders;
 
 ## What runs
 
-- `agent-api`: the only service with the OpenAI key and P-256 agent private key.
+- `agent-api`: the only service with the Gemini key and P-256 agent private key.
 - `merchant-api`: verifies PoP, owns commerce policy, demo login and Razorpay webhook HMAC.
 - `worker`: executes cancel-window work and reconciles ambiguous provider outcomes.
 - PostgreSQL 16: durable state, nonce replay protection, strict shared counters and row locks.
@@ -21,15 +21,17 @@ their own raw-body HMAC path and never pass through agent PoP.
 
 ## Local setup
 
-Requirements: Python 3.12, Node 22+, Docker with Compose, an OpenAI API key, and optional Razorpay
-Test Mode credentials.
+Requirements: Python 3.12, Node 22+, Docker with Compose, a free-tier Gemini API key, and optional
+Razorpay Test Mode credentials.
 
 ```bash
 python -m pip install -e ".[dev]"
 trustcart init-secrets --output .env
 ```
 
-Add `TRUSTCART_OPENAI_API_KEY` and optional Razorpay Test Mode values to `.env`, then run:
+Create a free-tier key in [Google AI Studio](https://aistudio.google.com/app/apikey), add it as
+`TRUSTCART_GEMINI_API_KEY` in `.env`, and optionally add Razorpay Test Mode values. Never commit
+the `.env` file or paste its secrets into the frontend. Then run:
 
 ```bash
 docker compose up --build -d postgres migrate
@@ -71,16 +73,20 @@ npm run lint
 npm run build
 ```
 
-Run the fixed 40-scenario real-model comparison (40 low + 40 medium calls) only when you intend to
-spend API credits:
+Run the fixed 40-scenario real-model comparison (40 low + 40 medium calls) only when the free-tier
+quota can accommodate 80 model calls:
 
 ```bash
 python evals/run_agent_evals.py --output evals/report.json
 ```
 
-The harness uses the real model and production tool definitions against a deterministic, no-money
-merchant transport. It records completion, tool count, latency and token use; it refuses to create a
-synthetic report when no OpenAI key is present.
+The harness uses the real Gemini model and production tool definitions against a deterministic,
+no-money merchant transport. It records completion, tool count, latency and token use; it refuses to
+create a synthetic report when no Gemini key is present.
+
+The demonstration uses Gemini's free API tier. Free-tier requests are quota-limited and may be used
+by Google to improve its products, so AgentAuth sends only the buyer's demo prompt and fictional
+catalog/tool facts—never API secrets, agent private keys, payment credentials, or raw webhook bodies.
 
 The concurrency and provider suites require real infrastructure. Set `TEST_DATABASE_URL` to a
 disposable PostgreSQL 16 database and supply Razorpay Test Mode credentials before running marked
@@ -104,7 +110,7 @@ acceptance criteria; the repository never fabricates either artifact.
 
 ## Repository map
 
-- `backend/trustcart/agent_runtime.py` — one bounded Agents SDK agent and structural tool gating.
+- `backend/trustcart/agent_runtime.py` — one bounded Gemini loop and structural tool gating.
 - `backend/trustcart/pop.py` — P-256 request proof and durable replay defense.
 - `backend/trustcart/commerce.py` — quote, idempotency and atomic reservations.
 - `backend/trustcart/payments.py` — Razorpay HMAC inbox and convergent webhook transitions.

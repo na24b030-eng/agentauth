@@ -392,7 +392,7 @@ class AgentRun(TimestampMixin, Base):
     checkout_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("checkouts.id"))
     final_response: Mapped[str | None] = mapped_column(Text)
     model_name: Mapped[str] = mapped_column(String(100))
-    reasoning_effort: Mapped[str] = mapped_column(String(24))
+    thinking_level: Mapped[str] = mapped_column(String(24))
     tool_call_count: Mapped[int] = mapped_column(Integer, default=0)
     turn_count: Mapped[int] = mapped_column(Integer, default=0)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

@@ -117,8 +117,9 @@ def health() -> dict:
     return {
         "status": "ok",
         "service": "agent-api",
+        "model_provider": "google-gemini",
         "model": settings.model_name,
-        "openai_configured": bool(settings.openai_api_key),
+        "gemini_configured": bool(settings.gemini_api_key),
     }
 
 
@@ -200,7 +201,7 @@ async def start_run(
         user_message=payload.message,
         payment_mode=payload.payment_mode,
         model_name=settings.model_name,
-        reasoning_effort=settings.model_reasoning_effort,
+        thinking_level=settings.model_thinking_level,
     )
     session.add(run)
     session.commit()

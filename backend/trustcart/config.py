@@ -12,9 +12,9 @@ class Settings(BaseSettings):
     frontend_origin: str = "http://localhost:3000"
     merchant_api_url: str = "http://localhost:8000"
     agent_api_url: str = "http://localhost:8001"
-    model_name: str = "gpt-5.5-2026-04-23"
-    model_reasoning_effort: str = "low"
-    openai_api_key: SecretStr | None = None
+    model_name: str = "gemini-3.7-flash"
+    model_thinking_level: str = "low"
+    gemini_api_key: SecretStr | None = None
     agent_private_key_pem: SecretStr | None = None
     demo_auth_private_key_pem: SecretStr | None = None
     demo_auth_public_key_pem: str | None = None

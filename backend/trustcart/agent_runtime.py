@@ -4,19 +4,16 @@ import asyncio
 import json
 import time
 import uuid
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
 import httpx
-from agents import (
-    Agent,
-    ModelSettings,
-    RunContextWrapper,
-    Runner,
-    function_tool,
-    set_default_openai_key,
-)
+from google import genai
+from google.genai import errors as genai_errors
+from google.genai import types
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 
 from .config import get_settings
@@ -65,10 +62,71 @@ class CommerceRunContext:
                 raise TrustCartError("RUN_CANCELLED", "The buyer cancelled this agent run", 409)
 
 
+class ToolArguments(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class SearchCatalogArguments(ToolArguments):
+    query: str = Field(min_length=1, max_length=200)
+    category: str | None = None
+    maximum_unit_price_paise: int | None = Field(default=None, ge=0)
+    result_limit: int = Field(default=10, ge=1, le=30)
+
+
+class EmptyArguments(ToolArguments):
+    pass
+
+
+class DeliveryArguments(ToolArguments):
+    postcode: str = Field(pattern=r"^[1-9][0-9]{5}$")
+
+
+class QuoteCartArguments(ToolArguments):
+    items: list[QuoteItemInput] = Field(min_length=1, max_length=30)
+    delivery_option_id: str = Field(min_length=1, max_length=64)
+
+
+ToolHandler = Callable[[CommerceRunContext, ToolArguments], Awaitable[Any]]
+
+
+@dataclass(frozen=True, slots=True)
+class CommerceTool:
+    name: str
+    description: str
+    arguments: type[ToolArguments]
+    handler: ToolHandler
+
+    @property
+    def params_json_schema(self) -> dict[str, Any]:
+        schema = self.arguments.model_json_schema()
+        schema.pop("title", None)
+        return schema
+
+    def declaration(self) -> types.FunctionDeclaration:
+        return types.FunctionDeclaration(
+            name=self.name,
+            description=self.description,
+            parameters_json_schema=self.params_json_schema,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class GeminiRunResult:
+    final_output: str
+    turns: int
+    input_tokens: int
+    output_tokens: int
+
+
 def _record_tool(
-    ctx: CommerceRunContext, name: str, inputs: Any, output: Any, summary: str
+    ctx: CommerceRunContext,
+    name: str,
+    inputs: Any,
+    output: Any,
+    summary: str,
+    *,
+    status: str = "SUCCEEDED",
 ) -> None:
-    ctx.tool_calls += 1
     if not ctx.persist_events:
         return
     with SessionLocal.begin() as session:
@@ -85,7 +143,7 @@ def _record_tool(
                 run_id=ctx.run_id,
                 sequence=sequence,
                 tool_name=name,
-                status="SUCCEEDED",
+                status=status,
                 input_digest=sha256_hex(json.dumps(inputs, sort_keys=True, default=str)),
                 output_digest=sha256_hex(json.dumps(output, sort_keys=True, default=str)),
                 summary=summary,
@@ -244,22 +302,17 @@ async def create_signed_grant_request(agent_id: uuid.UUID, payload: dict[str, An
     return data
 
 
-@function_tool(timeout=5)
 async def search_catalog(
-    wrapper: RunContextWrapper[CommerceRunContext],
-    query: str,
-    category: str | None = None,
-    maximum_unit_price_paise: int | None = None,
-    result_limit: int = 10,
+    ctx: CommerceRunContext, arguments: SearchCatalogArguments
 ) -> list[dict[str, Any]]:
     """Search factual products. Prices are exact, tax-inclusive paise and never model-generated."""
-    ctx = wrapper.context
-    ctx.assert_budget()
-    params = [("query", query), ("limit", str(min(result_limit, 30)))]
-    if category:
-        params.append(("category", category))
-    if maximum_unit_price_paise is not None:
-        params.append(("max_unit_price_paise", str(maximum_unit_price_paise)))
+    params = [("query", arguments.query), ("limit", str(arguments.result_limit))]
+    if arguments.category:
+        params.append(("category", arguments.category))
+    if arguments.maximum_unit_price_paise is not None:
+        params.append(
+            ("max_unit_price_paise", str(arguments.maximum_unit_price_paise))
+        )
     result = await merchant_request(ctx, "GET", "/v1/catalog/search", query=params)
     _record_tool(
         ctx, "search_catalog", params, result, f"Found {len(result)} factual catalog candidates."
@@ -267,11 +320,10 @@ async def search_catalog(
     return result
 
 
-@function_tool(timeout=5)
-async def get_usual_basket(wrapper: RunContextWrapper[CommerceRunContext]) -> dict[str, Any]:
+async def get_usual_basket(
+    ctx: CommerceRunContext, _: EmptyArguments
+) -> dict[str, Any]:
     """Return the authenticated buyer's seeded usual basket; buyer identity is injected by context."""
-    ctx = wrapper.context
-    ctx.assert_budget()
     result = await merchant_request(ctx, "GET", "/v1/users/me/usual-basket")
     _record_tool(
         ctx,
@@ -283,42 +335,41 @@ async def get_usual_basket(wrapper: RunContextWrapper[CommerceRunContext]) -> di
     return result
 
 
-@function_tool(timeout=5)
 async def get_delivery_options(
-    wrapper: RunContextWrapper[CommerceRunContext], postcode: str
+    ctx: CommerceRunContext, arguments: DeliveryArguments
 ) -> list[dict[str, Any]]:
     """Return exact delivery slots, cutoff timestamps and fees for an Indian postcode."""
-    ctx = wrapper.context
-    ctx.assert_budget()
     ctx.active_quote = None
     result = await merchant_request(
-        ctx, "POST", "/v1/delivery-options", payload={"postcode": postcode}
+        ctx,
+        "POST",
+        "/v1/delivery-options",
+        payload={"postcode": arguments.postcode},
     )
     _record_tool(
         ctx,
         "get_delivery_options",
-        {"postcode": postcode},
+        {"postcode": arguments.postcode},
         result,
         "Loaded deterministic delivery fees and cutoffs.",
     )
     return result
 
 
-@function_tool(timeout=5)
 async def quote_cart(
-    wrapper: RunContextWrapper[CommerceRunContext],
-    items: list[QuoteItemInput],
-    delivery_option_id: str,
+    ctx: CommerceRunContext, arguments: QuoteCartArguments
 ) -> dict[str, Any]:
     """Create a canonical immutable quote from SKU/quantity items and one delivery option."""
-    ctx = wrapper.context
-    ctx.assert_budget()
-    serialized_items = [item.model_dump() for item in items]
+    ctx.active_quote = None
+    serialized_items = [item.model_dump() for item in arguments.items]
     result = await merchant_request(
         ctx,
         "POST",
         "/v1/quotes",
-        payload={"items": serialized_items, "delivery_option_id": delivery_option_id},
+        payload={
+            "items": serialized_items,
+            "delivery_option_id": arguments.delivery_option_id,
+        },
     )
     ctx.active_quote = result
     if ctx.persist_events:
@@ -329,7 +380,10 @@ async def quote_cart(
     _record_tool(
         ctx,
         "quote_cart",
-        {"items": serialized_items, "delivery_option_id": delivery_option_id},
+        {
+            "items": serialized_items,
+            "delivery_option_id": arguments.delivery_option_id,
+        },
         result,
         f"Canonical quote totals ₹{result['total_paise'] / 100:.2f}.",
     )
@@ -346,19 +400,10 @@ def _has_live_quote(ctx: CommerceRunContext) -> bool:
     return expires > datetime.now(UTC)
 
 
-def _can_place(wrapper: RunContextWrapper[CommerceRunContext], _: Agent) -> bool:
-    return _has_live_quote(wrapper.context) and wrapper.context.auto_execute
-
-
-def _can_approve(wrapper: RunContextWrapper[CommerceRunContext], _: Agent) -> bool:
-    return _has_live_quote(wrapper.context) and not wrapper.context.auto_execute
-
-
-@function_tool(is_enabled=_can_place, timeout=5)
-async def place_order(wrapper: RunContextWrapper[CommerceRunContext]) -> dict[str, Any]:
+async def place_order(
+    ctx: CommerceRunContext, _: EmptyArguments | None = None
+) -> dict[str, Any]:
     """Place the active trusted quote. Takes no quote ID, price, grant, buyer, or idempotency input."""
-    ctx = wrapper.context
-    ctx.assert_budget()
     if not _has_live_quote(ctx):
         raise TrustCartError("QUOTE_REQUIRED", "A valid quote must be created before checkout", 409)
     key = sha256_hex(f"{ctx.run_id}:checkout.create.v1")[:48]
@@ -396,13 +441,10 @@ async def place_order(wrapper: RunContextWrapper[CommerceRunContext]) -> dict[st
     return result
 
 
-@function_tool(is_enabled=_can_approve, timeout=5)
 async def request_purchase_approval(
-    wrapper: RunContextWrapper[CommerceRunContext],
+    ctx: CommerceRunContext, _: EmptyArguments | None = None
 ) -> dict[str, Any]:
     """Return the active proposal when the grant requires explicit purchase approval."""
-    ctx = wrapper.context
-    ctx.assert_budget()
     if not _has_live_quote(ctx):
         raise TrustCartError("QUOTE_REQUIRED", "A quote is required before approval", 409)
     result = {
@@ -426,30 +468,303 @@ Interpret the buyer's goal and use tools for facts. Never invent a price, total,
 quote ID, or checkout state. You MUST obtain a successful canonical quote before purchase. Browse-only
 or comparative requests must never purchase. Ask a concise clarification when constraints are ambiguous.
 When auto-execution is available and the user explicitly asked to buy, call place_order. The application,
-not you, controls whether that tool is visible. Keep the final answer short and state whether the result is
-a proposal, scheduled checkout, payment pending, paid, or simulated; Order creation is never payment.
+not you, controls whether that tool is visible. Call at most one tool in each turn. Keep the final answer
+short and state whether the result is a proposal, scheduled checkout, payment pending, paid, or
+simulated; Order creation is never payment.
 """
 
 
-def build_agent(reasoning_effort: str | None = None) -> Agent[CommerceRunContext]:
-    return Agent[CommerceRunContext](
-        name="AgentAuth Commerce Agent",
-        instructions=INSTRUCTIONS,
-        model=settings.model_name,
-        model_settings=ModelSettings(
-            parallel_tool_calls=False,
-            reasoning={"effort": reasoning_effort or settings.model_reasoning_effort},
-            timeout=20,
-        ),
-        tools=[
-            search_catalog,
-            get_usual_basket,
-            get_delivery_options,
-            quote_cart,
-            place_order,
-            request_purchase_approval,
-        ],
-    )
+DISCOVERY_TOOLS = (
+    CommerceTool(
+        "search_catalog",
+        "Search exact merchant catalog facts. Prices are tax-inclusive paise.",
+        SearchCatalogArguments,
+        search_catalog,
+    ),
+    CommerceTool(
+        "get_usual_basket",
+        "Load the authenticated buyer's factual usual basket. Takes no buyer identifier.",
+        EmptyArguments,
+        get_usual_basket,
+    ),
+    CommerceTool(
+        "get_delivery_options",
+        "Return deterministic delivery slots, cutoffs, and fees for one Indian postcode.",
+        DeliveryArguments,
+        get_delivery_options,
+    ),
+    CommerceTool(
+        "quote_cart",
+        "Create the canonical merchant quote from SKU quantities and a delivery option.",
+        QuoteCartArguments,
+        quote_cart,
+    ),
+)
+PLACE_ORDER_TOOL = CommerceTool(
+    "place_order",
+    "Place only the active trusted quote. Takes no model-controlled fields.",
+    EmptyArguments,
+    place_order,
+)
+APPROVAL_TOOL = CommerceTool(
+    "request_purchase_approval",
+    "Return the active quote for explicit approval without creating a Checkout.",
+    EmptyArguments,
+    request_purchase_approval,
+)
+ALL_TOOLS = (*DISCOVERY_TOOLS, PLACE_ORDER_TOOL, APPROVAL_TOOL)
+
+
+def available_tools(ctx: CommerceRunContext) -> tuple[CommerceTool, ...]:
+    """Expose action tools only when trusted runtime state satisfies their gates."""
+    if ctx.checkout_created or ctx.approval_requested:
+        return ()
+    if not _has_live_quote(ctx):
+        return DISCOVERY_TOOLS
+    action = PLACE_ORDER_TOOL if ctx.auto_execute else APPROVAL_TOOL
+    return (*DISCOVERY_TOOLS, action)
+
+
+def _tool_error(exc: TrustCartError) -> dict[str, Any]:
+    return {
+        "ok": False,
+        "error": {"code": exc.code, "message": exc.message, "details": exc.details},
+    }
+
+
+async def execute_tool(
+    ctx: CommerceRunContext, name: str, raw_arguments: dict[str, Any]
+) -> dict[str, Any]:
+    ctx.assert_budget()
+    ctx.tool_calls += 1
+    allowed = {tool.name: tool for tool in available_tools(ctx)}
+    tool = allowed.get(name)
+    if tool is None:
+        exc = TrustCartError(
+            "TOOL_NOT_AVAILABLE",
+            "That tool is not available in the current trusted run state",
+            409,
+        )
+        _record_tool(
+            ctx, name, raw_arguments, _tool_error(exc), exc.message, status="REJECTED"
+        )
+        return _tool_error(exc)
+    try:
+        arguments = tool.arguments.model_validate(raw_arguments)
+    except Exception as validation_error:
+        exc = TrustCartError(
+            "INVALID_TOOL_ARGUMENTS",
+            f"Arguments for {name} failed strict validation",
+            422,
+            {"validation": str(validation_error)[:500]},
+        )
+        _record_tool(
+            ctx, name, raw_arguments, _tool_error(exc), exc.message, status="REJECTED"
+        )
+        return _tool_error(exc)
+    try:
+        result = await asyncio.wait_for(tool.handler(ctx, arguments), timeout=5)
+        return {"ok": True, "result": result}
+    except TimeoutError:
+        exc = TrustCartError("TOOL_TIMEOUT", f"{name} exceeded its five-second limit", 408)
+        _record_tool(ctx, name, raw_arguments, _tool_error(exc), exc.message, status="FAILED")
+        return _tool_error(exc)
+    except TrustCartError as exc:
+        _record_tool(ctx, name, raw_arguments, _tool_error(exc), exc.message, status="FAILED")
+        if exc.code in {"RUN_CANCELLED", "RUN_TIMEOUT", "TOOL_LIMIT_EXCEEDED"}:
+            raise
+        return _tool_error(exc)
+    except Exception:
+        exc = TrustCartError(
+            "TOOL_EXECUTION_FAILED",
+            f"{name} failed without changing trusted commerce state",
+            502,
+        )
+        _record_tool(ctx, name, raw_arguments, _tool_error(exc), exc.message, status="FAILED")
+        return _tool_error(exc)
+
+
+def _thinking_level(value: str) -> types.ThinkingLevel:
+    levels = {
+        "minimal": types.ThinkingLevel.MINIMAL,
+        "low": types.ThinkingLevel.LOW,
+        "medium": types.ThinkingLevel.MEDIUM,
+        "high": types.ThinkingLevel.HIGH,
+    }
+    try:
+        return levels[value.lower()]
+    except KeyError as exc:
+        raise TrustCartError(
+            "INVALID_THINKING_LEVEL",
+            "Gemini thinking level must be minimal, low, medium, or high",
+            500,
+        ) from exc
+
+
+class GeminiCommerceAgent:
+    """One bounded Gemini agent loop; application code owns tools and state."""
+
+    def __init__(
+        self,
+        thinking_level: str | None = None,
+        *,
+        client_factory: Callable[..., Any] = genai.Client,
+    ) -> None:
+        self.model = settings.model_name
+        self.thinking_level = thinking_level or settings.model_thinking_level
+        self.tools = ALL_TOOLS
+        self._client_factory = client_factory
+
+    def visible_tools(self, ctx: CommerceRunContext) -> tuple[CommerceTool, ...]:
+        return available_tools(ctx)
+
+    async def run(
+        self,
+        message: str,
+        ctx: CommerceRunContext,
+        *,
+        api_key: str,
+    ) -> GeminiRunResult:
+        client = self._client_factory(
+            api_key=api_key,
+            http_options=types.HttpOptions(
+                api_version="v1",
+                headers={"x-goog-api-client": "agentauth-buildathon/0.1.0"},
+            ),
+        )
+        contents: list[types.Content] = [
+            types.Content(role="user", parts=[types.Part.from_text(text=message)])
+        ]
+        input_tokens = 0
+        output_tokens = 0
+        try:
+            for turn in range(1, 9):
+                ctx.assert_budget()
+                visible = self.visible_tools(ctx)
+                sdk_tools = (
+                    [types.Tool(function_declarations=[tool.declaration() for tool in visible])]
+                    if visible
+                    else None
+                )
+                try:
+                    response = await client.aio.models.generate_content(
+                        model=self.model,
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            system_instruction=INSTRUCTIONS,
+                            temperature=0.2,
+                            max_output_tokens=600,
+                            tools=sdk_tools,
+                            tool_config=(
+                                types.ToolConfig(
+                                    function_calling_config=types.FunctionCallingConfig(
+                                        mode=types.FunctionCallingConfigMode.AUTO
+                                    )
+                                )
+                                if sdk_tools
+                                else None
+                            ),
+                            automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                                disable=True
+                            ),
+                            thinking_config=types.ThinkingConfig(
+                                thinking_level=_thinking_level(self.thinking_level)
+                            ),
+                        ),
+                    )
+                except genai_errors.ClientError as exc:
+                    status = int(getattr(exc, "code", 400) or 400)
+                    if status in {401, 403}:
+                        code, message = (
+                            "MODEL_AUTH_FAILED",
+                            "Gemini rejected the configured API key or model access",
+                        )
+                    elif status == 429:
+                        code, message = (
+                            "MODEL_RATE_LIMITED",
+                            "Gemini free-tier quota is temporarily unavailable",
+                        )
+                    else:
+                        code, message = (
+                            "MODEL_REQUEST_REJECTED",
+                            "Gemini rejected the bounded agent request",
+                        )
+                    raise TrustCartError(code, message, 503) from exc
+                except genai_errors.ServerError as exc:
+                    raise TrustCartError(
+                        "MODEL_PROVIDER_UNAVAILABLE",
+                        "Gemini is temporarily unavailable; the run can be retried safely",
+                        503,
+                    ) from exc
+                usage = response.usage_metadata
+                if usage:
+                    prompt = usage.prompt_token_count or 0
+                    input_tokens += prompt
+                    output_tokens += max(0, (usage.total_token_count or 0) - prompt)
+                if not response.candidates or response.candidates[0].content is None:
+                    raise TrustCartError(
+                        "MODEL_EMPTY_RESPONSE", "Gemini returned no candidate content", 502
+                    )
+                model_content = response.candidates[0].content
+                contents.append(model_content)
+                calls = [
+                    part.function_call
+                    for part in (model_content.parts or [])
+                    if part.function_call is not None
+                ]
+                if len(calls) > 1:
+                    parts = [
+                        types.Part(
+                            function_response=types.FunctionResponse(
+                                id=call.id,
+                                name=call.name,
+                                response={
+                                    "ok": False,
+                                    "error": {
+                                        "code": "PARALLEL_TOOL_CALLS_REJECTED",
+                                        "message": "Call exactly one commerce tool per turn",
+                                    },
+                                },
+                            )
+                        )
+                        for call in calls
+                    ]
+                    contents.append(types.Content(role="user", parts=parts))
+                    continue
+                if calls:
+                    call = calls[0]
+                    name = str(call.name or "")
+                    result = await execute_tool(ctx, name, dict(call.args or {}))
+                    contents.append(
+                        types.Content(
+                            role="user",
+                            parts=[
+                                types.Part(
+                                    function_response=types.FunctionResponse(
+                                        id=call.id,
+                                        name=name,
+                                        response=result,
+                                    )
+                                )
+                            ],
+                        )
+                    )
+                    continue
+                final = "".join(
+                    part.text or "" for part in (model_content.parts or []) if part.text
+                ).strip()
+                if not final:
+                    raise TrustCartError(
+                        "MODEL_EMPTY_RESPONSE", "Gemini returned neither text nor a tool call", 502
+                    )
+                return GeminiRunResult(final, turn, input_tokens, output_tokens)
+            raise TrustCartError("MODEL_TURN_LIMIT", "Gemini reached the eight-turn limit", 409)
+        finally:
+            await client.aio.aclose()
+
+
+def build_agent(thinking_level: str | None = None) -> GeminiCommerceAgent:
+    return GeminiCommerceAgent(thinking_level)
 
 
 async def run_commerce_agent(run_id: uuid.UUID) -> None:
@@ -485,17 +800,21 @@ async def run_commerce_agent(run_id: uuid.UUID) -> None:
                 "The developer fixture forced a typed model-timeout outcome",
                 408,
             )
-        if not settings.openai_api_key:
+        if not settings.gemini_api_key:
             raise TrustCartError(
-                "OPENAI_NOT_CONFIGURED",
-                "Set TRUSTCART_OPENAI_API_KEY to run the genuine tool-using agent",
+                "GEMINI_NOT_CONFIGURED",
+                "Set TRUSTCART_GEMINI_API_KEY to run the genuine tool-using agent",
                 503,
             )
-        set_default_openai_key(settings.openai_api_key.get_secret_value())
         result = await asyncio.wait_for(
-            Runner.run(build_agent(), message, context=context, max_turns=8), timeout=20
+            build_agent().run(
+                message,
+                context,
+                api_key=settings.gemini_api_key.get_secret_value(),
+            ),
+            timeout=20,
         )
-        final = str(result.final_output)
+        final = result.final_output
         with SessionLocal.begin() as session:
             run = session.get(AgentRun, run_id)
             if run and run.status == RunStatus.RUNNING:
@@ -504,13 +823,19 @@ async def run_commerce_agent(run_id: uuid.UUID) -> None:
                 )
                 run.final_response = final
                 run.tool_call_count = context.tool_calls
-                run.turn_count = min(8, context.tool_calls + 1)
+                run.turn_count = result.turns
                 run.completed_at = datetime.now(UTC)
     except Exception as exc:
         with SessionLocal.begin() as session:
             run = session.get(AgentRun, run_id)
             if run and run.status == RunStatus.RUNNING:
                 run.status = RunStatus.FAILED
-                run.error_code = exc.code if isinstance(exc, TrustCartError) else "AGENT_RUN_FAILED"
+                run.error_code = (
+                    exc.code
+                    if isinstance(exc, TrustCartError)
+                    else "MODEL_TIMEOUT"
+                    if isinstance(exc, TimeoutError)
+                    else "AGENT_RUN_FAILED"
+                )
                 run.error_detail = str(exc)[:1_000]
                 run.completed_at = datetime.now(UTC)

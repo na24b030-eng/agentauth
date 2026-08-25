@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 import httpx
-from agents import Runner, set_default_openai_key
 from trustcart.agent_runtime import CommerceRunContext, build_agent
 from trustcart.crypto import generate_p256_private_key, private_key_to_pem
 
@@ -157,7 +156,9 @@ def outcome(ctx: CommerceRunContext, final: str) -> str:
     return "browse"
 
 
-async def evaluate(effort: str, scenarios: list[dict[str, Any]]) -> list[dict[str, Any]]:
+async def evaluate(
+    thinking_level: str, scenarios: list[dict[str, Any]], api_key: str
+) -> list[dict[str, Any]]:
     rows = []
     key = private_key_to_pem(generate_p256_private_key())
     for scenario in scenarios:
@@ -174,25 +175,24 @@ async def evaluate(effort: str, scenarios: list[dict[str, Any]]) -> list[dict[st
             persist_events=False,
         )
         started = time.perf_counter()
-        result = await Runner.run(
-            build_agent(effort), scenario["message"], context=ctx, max_turns=8
+        result = await build_agent(thinking_level).run(
+            scenario["message"], ctx, api_key=api_key
         )
         latency = round(time.perf_counter() - started, 3)
         actual = outcome(ctx, str(result.final_output))
         expected = scenario["expected"]
         passed = actual == expected or (expected == "no_execute" and actual != "execute")
-        usage = result.context_wrapper.usage
         rows.append(
             {
                 "id": scenario["id"],
-                "effort": effort,
+                "thinking_level": thinking_level,
                 "expected": expected,
                 "actual": actual,
                 "passed": passed,
                 "tool_calls": ctx.tool_calls,
                 "latency_seconds": latency,
-                "input_tokens": usage.input_tokens,
-                "output_tokens": usage.output_tokens,
+                "input_tokens": result.input_tokens,
+                "output_tokens": result.output_tokens,
                 "final": str(result.final_output),
             }
         )
@@ -203,29 +203,40 @@ async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=ROOT / "report.json")
     args = parser.parse_args()
-    api_key = os.getenv("TRUSTCART_OPENAI_API_KEY")
+    api_key = os.getenv("TRUSTCART_GEMINI_API_KEY")
     if not api_key:
-        raise SystemExit("TRUSTCART_OPENAI_API_KEY is required; no synthetic report was written")
-    set_default_openai_key(api_key)
+        raise SystemExit("TRUSTCART_GEMINI_API_KEY is required; no synthetic report was written")
     scenarios = json.loads((ROOT / "scenarios.json").read_text(encoding="utf-8"))
-    rows = await evaluate("low", scenarios) + await evaluate("medium", scenarios)
+    rows = await evaluate("low", scenarios, api_key) + await evaluate(
+        "medium", scenarios, api_key
+    )
     summary = {
-        effort: {
-            "completion_rate": sum(row["passed"] for row in rows if row["effort"] == effort)
+        thinking_level: {
+            "completion_rate": sum(
+                row["passed"]
+                for row in rows
+                if row["thinking_level"] == thinking_level
+            )
             / len(scenarios),
-            "average_tool_calls": sum(row["tool_calls"] for row in rows if row["effort"] == effort)
+            "average_tool_calls": sum(
+                row["tool_calls"]
+                for row in rows
+                if row["thinking_level"] == thinking_level
+            )
             / len(scenarios),
             "average_latency_seconds": sum(
-                row["latency_seconds"] for row in rows if row["effort"] == effort
+                row["latency_seconds"]
+                for row in rows
+                if row["thinking_level"] == thinking_level
             )
             / len(scenarios),
             "total_tokens": sum(
                 row["input_tokens"] + row["output_tokens"]
                 for row in rows
-                if row["effort"] == effort
+                if row["thinking_level"] == thinking_level
             ),
         }
-        for effort in ("low", "medium")
+        for thinking_level in ("low", "medium")
     }
     args.output.write_text(
         json.dumps({"summary": summary, "results": rows}, indent=2), encoding="utf-8"
