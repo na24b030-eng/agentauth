@@ -31,7 +31,7 @@
 
 ## Delivery
 
-- [ ] Private hosted preview matches the tested commit.
+- [x] Private hosted preview matches the tested commit.
 - [ ] Public backend URLs are configured if live hosted behavior is claimed.
 - [x] Five-minute video follows `DEMO_RUNBOOK.md`.
 - [x] Failure narrative follows `FAILURE_STORY.md`.
