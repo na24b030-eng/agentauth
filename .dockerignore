@@ -1,0 +1,16 @@
+.env
+.env.*
+!.env.example
+.git
+.github
+.next
+.vinext
+.venv
+node_modules
+work
+__pycache__
+*.py[cod]
+.pytest_cache
+.ruff_cache
+coverage
+htmlcov

@@ -492,7 +492,57 @@ def usual_basket(
     session: Session = Depends(get_session),
 ) -> dict:
     user = session.get(User, principal.user_id)
-    return {"items": user.usual_basket if user else []}
+    basket = user.usual_basket if user else []
+    quantities = {str(item["sku"]): int(item["quantity"]) for item in basket}
+    if not quantities:
+        return {"items": [], "estimated_subtotal_paise": 0}
+
+    rows = session.execute(
+        select(Product, Inventory)
+        .join(Inventory, Inventory.product_id == Product.id)
+        .where(
+            Product.merchant_id == principal.merchant_id,
+            Product.sku.in_(quantities),
+        )
+    ).all()
+    by_sku = {product.sku: (product, inventory) for product, inventory in rows}
+    items: list[dict] = []
+    estimated_subtotal_paise = 0
+    for basket_item in basket:
+        sku = str(basket_item["sku"])
+        quantity = int(basket_item["quantity"])
+        row = by_sku.get(sku)
+        if row is None:
+            items.append(
+                {
+                    "sku": sku,
+                    "quantity": quantity,
+                    "catalog_status": "MISSING",
+                }
+            )
+            continue
+        product, inventory = row
+        available_quantity = inventory.on_hand_qty - inventory.reserved_qty
+        line_total_paise = product.unit_price_paise * quantity
+        estimated_subtotal_paise += line_total_paise
+        items.append(
+            {
+                "sku": sku,
+                "quantity": quantity,
+                "name": product.name,
+                "category": product.category,
+                "unit_price_paise": product.unit_price_paise,
+                "line_total_paise": line_total_paise,
+                "available_quantity": available_quantity,
+                "within_grant_scope": product.category in principal.allowed_categories,
+                "catalog_status": "AVAILABLE" if available_quantity >= quantity else "LOW_STOCK",
+            }
+        )
+    return {
+        "items": items,
+        "estimated_subtotal_paise": estimated_subtotal_paise,
+        "estimate_excludes_delivery": True,
+    }
 
 
 @app.post("/v1/delivery-options", response_model=list[DeliveryOptionOut])

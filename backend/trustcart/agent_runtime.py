@@ -106,7 +106,12 @@ class CommerceTool:
         return types.FunctionDeclaration(
             name=self.name,
             description=self.description,
-            parameters_json_schema=self.params_json_schema,
+            # The stable Gemini v1 endpoint accepts its typed Schema field. The
+            # SDK's parameters_json_schema convenience field is v1beta-only and
+            # would be forwarded as an unknown wire property on v1.
+            parameters=types.Schema.from_json_schema(
+                json_schema=types.JSONSchema.model_validate(self.params_json_schema)
+            ),
         )
 
 
@@ -323,7 +328,7 @@ async def search_catalog(
 async def get_usual_basket(
     ctx: CommerceRunContext, _: EmptyArguments
 ) -> dict[str, Any]:
-    """Return the authenticated buyer's seeded usual basket; buyer identity is injected by context."""
+    """Return the buyer's usual basket with current catalog and inventory facts."""
     result = await merchant_request(ctx, "GET", "/v1/users/me/usual-basket")
     _record_tool(
         ctx,
@@ -467,6 +472,8 @@ INSTRUCTIONS = """You are AgentAuth's single commerce discovery agent.
 Interpret the buyer's goal and use tools for facts. Never invent a price, total, SKU, user, grant,
 quote ID, or checkout state. You MUST obtain a successful canonical quote before purchase. Browse-only
 or comparative requests must never purchase. Ask a concise clarification when constraints are ambiguous.
+get_usual_basket already returns current exact SKU, price, category, grant-scope, and availability facts;
+do not search those SKUs again unless you need a substitution or the basket reports a missing item.
 When auto-execution is available and the user explicitly asked to buy, call place_order. The application,
 not you, controls whether that tool is visible. Call at most one tool in each turn. Keep the final answer
 short and state whether the result is a proposal, scheduled checkout, payment pending, paid, or
@@ -483,7 +490,8 @@ DISCOVERY_TOOLS = (
     ),
     CommerceTool(
         "get_usual_basket",
-        "Load the authenticated buyer's factual usual basket. Takes no buyer identifier.",
+        "Load the authenticated buyer's usual basket with current exact merchant prices, categories, "
+        "grant-scope flags, and availability. Takes no buyer identifier; do not re-search these SKUs.",
         EmptyArguments,
         get_usual_basket,
     ),
@@ -735,6 +743,22 @@ class GeminiCommerceAgent:
                     call = calls[0]
                     name = str(call.name or "")
                     result = await execute_tool(ctx, name, dict(call.args or {}))
+                    if result.get("ok") and name == "place_order":
+                        return GeminiRunResult(
+                            "Checkout scheduled after deterministic authorization and reservation. "
+                            "It is in the cancellation window; payment is not yet complete.",
+                            turn,
+                            input_tokens,
+                            output_tokens,
+                        )
+                    if result.get("ok") and name == "request_purchase_approval":
+                        return GeminiRunResult(
+                            "Proposal ready for explicit buyer approval. No Checkout or payment "
+                            "was created.",
+                            turn,
+                            input_tokens,
+                            output_tokens,
+                        )
                     contents.append(
                         types.Content(
                             role="user",

@@ -85,6 +85,7 @@ export default function Home() {
   const [grant, setGrant] = useState<Grant | null>(null);
   const [view, setView] = useState<View>('commerce');
   const [mode, setMode] = useState<Mode>('DELEGATED_DEBIT_SIMULATOR');
+  const [razorpayConfigured, setRazorpayConfigured] = useState(false);
   const [draft, setDraft] = useState('Order my usual groceries under ₹900 for delivery tonight');
   const [submittedMessage, setSubmittedMessage] = useState('');
   const [run, setRun] = useState<AgentRun | null>(null);
@@ -131,11 +132,13 @@ export default function Home() {
   }, [checkout, toolEvents]);
 
   async function loadIdentityAndGrants(activeToken: string) {
-    const [identity, grants] = await Promise.all([
+    const [identity, grants, paymentConfig] = await Promise.all([
       requestJson<AgentIdentity>(merchantBase(), '/v1/agents/current', activeToken),
       requestJson<Grant[]>(merchantBase(), '/v1/grants', activeToken),
+      requestJson<{ enabled: boolean }>(merchantBase(), '/v1/payment-config'),
     ]);
     setAgent(identity);
+    setRazorpayConfigured(paymentConfig.enabled);
     const active = grants.find((item) => item.status === 'ACTIVE' && new Date(item.expires_at) > new Date()) || null;
     setGrant(active); if (!active) setView('delegations');
   }
@@ -200,12 +203,16 @@ export default function Home() {
     return latest;
   }
 
-  async function pollCheckout(runId: string, activeToken: string, generation: number) {
+  async function pollCheckout(runId: string, activeToken: string, generation: number, grantId: string) {
     for (let attempt = 0; attempt < 900 && runGeneration.current === generation; attempt += 1) {
       try {
         const latest = await requestJson<Checkout>(agentBase(), `/v1/agent-runs/${runId}/checkout`, activeToken); setCheckout(latest);
         if (terminalCheckoutStates.has(latest.status)) {
-          setAudit(await requestJson<AuditEvent[]>(merchantBase(), `/v1/audit-events?checkout_id=${latest.id}`, activeToken)); return;
+          const [events, refreshedGrant] = await Promise.all([
+            requestJson<AuditEvent[]>(merchantBase(), `/v1/audit-events?checkout_id=${latest.id}`, activeToken),
+            requestJson<Grant>(merchantBase(), `/v1/grants/${grantId}`, activeToken),
+          ]);
+          setAudit(events); setGrant(refreshedGrant); return;
         }
       } catch (cause) { if (attempt > 8) throw cause; }
       await new Promise((resolve) => window.setTimeout(resolve, 1000));
@@ -222,7 +229,7 @@ export default function Home() {
       const created = await requestJson<AgentRun>(agentBase(), '/v1/agent-runs', token, { method: 'POST', body: JSON.stringify({ message: draft.trim(), payment_mode: mode, grant_id: grant.id }) });
       setRun(created); setDraft(''); await consumeEvents(created.id, token, generation);
       const terminal = await hydrateRun(created.id, token); if (terminal.error_code) throw new Error(terminal.error_code);
-      if (terminal.checkout_id) await pollCheckout(created.id, token, generation);
+      if (terminal.checkout_id) await pollCheckout(created.id, token, generation, grant.id);
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Agent run failed'); }
     finally { if (runGeneration.current === generation) setBusy(false); }
   }
@@ -300,7 +307,7 @@ export default function Home() {
       <section className="conversation">
         {view === 'commerce' ? <>
           <div className="section-kicker">{connection === 'preview' ? 'GUIDED PRODUCT PREVIEW' : 'LIVE COMMERCE SESSION'}</div>
-          <div className="conversation-heading"><div><h1>Good evening, {displayName}.</h1><p>What should your bounded commerce agent take care of?</p></div><div><div className="mode-switch" aria-label="Payment mode"><button type="button" className={mode === 'DELEGATED_DEBIT_SIMULATOR' ? 'selected' : ''} onClick={() => setMode('DELEGATED_DEBIT_SIMULATOR')}>Autonomous demo</button><button type="button" className={mode === 'RAZORPAY_PAYMENT_LAB' ? 'selected' : ''} onClick={() => setMode('RAZORPAY_PAYMENT_LAB')}>Razorpay Payment Lab</button></div><small className="mode-help">{mode === 'DELEGATED_DEBIT_SIMULATOR' ? 'Deterministic simulated debit; no real payment.' : 'Creates a real Test Mode Order; paid only after capture.'}</small></div></div>
+          <div className="conversation-heading"><div><h1>Good evening, {displayName}.</h1><p>What should your bounded commerce agent take care of?</p></div><div><div className="mode-switch" aria-label="Payment mode"><button type="button" className={mode === 'DELEGATED_DEBIT_SIMULATOR' ? 'selected' : ''} onClick={() => setMode('DELEGATED_DEBIT_SIMULATOR')}>Autonomous demo</button><button type="button" className={mode === 'RAZORPAY_PAYMENT_LAB' ? 'selected' : ''} onClick={() => setMode('RAZORPAY_PAYMENT_LAB')} disabled={!razorpayConfigured} title={razorpayConfigured ? 'Create a real Razorpay Test Mode Order' : 'Add Razorpay Test Mode credentials to enable this lab'}>Razorpay Payment Lab</button></div><small className="mode-help">{mode === 'DELEGATED_DEBIT_SIMULATOR' ? (razorpayConfigured ? 'Deterministic simulated debit; no real payment.' : 'Simulated debit only · Razorpay Lab needs Test Mode keys.') : 'Creates a real Test Mode Order; paid only after capture.'}</small></div></div>
           <div className="chat-stream">
             {submittedMessage && <div className="user-message">{submittedMessage}</div>}
             {(submittedMessage || busy || run) && <div className="agent-response"><div className="agent-orb">AI</div><div className="response-copy"><p>{run?.final_response || (busy ? 'I’m using merchant facts, then deterministic services will independently enforce authority and reservations.' : connection === 'preview' ? 'Preview: the usual basket fits the sample grant and delivery constraint.' : 'Ready.')}</p>
@@ -314,7 +321,7 @@ export default function Home() {
         : view === 'developer' ? <div className="feature-view"><div className="section-kicker">FAILURE LAB</div><h1>Break it safely.</h1><p>These are evidence-backed integration scenarios, not decorative UI toggles.</p><div className="developer-grid"><button disabled={connection !== 'ready'} onClick={() => armFault('DROP_ORDER_CREATE_RESPONSE')}><span>Lost create response</span><b>{armedFaults.includes('DROP_ORDER_CREATE_RESPONSE') ? 'ARMED ONCE' : 'ARM WORKER'}</b><small>Discard success, then recover exactly one Order by receipt</small></button><button disabled={connection !== 'ready' || !grant} onClick={replayNonce}><span>Replay PoP nonce</span><b>RUN SIGNED REPLAY</b><small>First request succeeds; identical proof must return PROOF_REPLAYED</small></button><button disabled={connection !== 'ready' || !checkout?.razorpay_order_id || checkout.payment_mode !== 'RAZORPAY_PAYMENT_LAB'} onClick={runWebhookFixture}><span>Out-of-order + duplicate webhook</span><b>RUN DISCLOSED FIXTURE</b><small>Signed capture → stale failure → duplicate failure; exactly one ledger effect</small></button><button disabled={connection !== 'ready'} onClick={() => armFault('FORCE_MODEL_TIMEOUT')}><span>Force model timeout</span><b>{armedFaults.includes('FORCE_MODEL_TIMEOUT') ? 'ARMED ONCE' : 'ARM AGENT'}</b><small>Next run returns a typed recovery outcome</small></button></div><div className={`config-health ${connection === 'preview' ? 'warning' : ''}`}><i />{connection === 'preview' ? 'Frontend preview only — no backend or provider claim is being made.' : 'Agent and merchant APIs are reachable. Provider secrets remain server-side.'}</div></div>
         : <div className="feature-view inspector-focus"><div className="section-kicker">TAMPER-EVIDENT EVIDENCE</div><h1>Trust Inspector</h1><p>The model’s proposal and the deterministic money path are separate facts.</p><div className="canonical-block"><span>SIGNED CANONICAL REQUEST</span><code>TC-POP-V1{`\n`}POST{`\n`}/v1/checkouts{`\n`}raw_body_sha256 · timestamp · nonce{`\n`}{grant?.immutable_digest || 'grant_immutable_digest'}</code></div><div className="hash-chain">{(audit.length ? audit : [{ sequence: 1, action: 'quote.preview' }, { sequence: 2, action: 'checkout.reserved' }]).map((item) => <span key={`${item.sequence}-${item.action}`}>{String(item.sequence).padStart(2, '0')} {item.action}</span>)}</div>{audit.length > 0 && <div className="audit-list">{audit.map((event) => <div key={event.id}><b>{event.reason_code}</b><p>{event.explanation}</p><code>{event.event_hash.slice(0, 18)}…</code></div>)}</div>}</div>}
       </section>
-      <aside className="trust-panel"><div className="trust-head"><div><span className="pulse"><i /></span><div><h2>Trust Inspector</h2><p>Every money action, explained</p></div></div></div><div className="trust-section"><div className="trust-label">ACTIVE DELEGATION <span>{grant?.status || (connection === 'preview' ? 'PREVIEW' : 'MISSING')}</span></div><div className="fingerprint"><div className="fingerprint-icon">⌘</div><div><b>{agent?.name || 'AgentAuth Buyer v1'}</b><code>{shortFingerprint(agent?.jwk_thumbprint)}</code></div></div><div className="allowance"><div><span>Allowance reserved or spent</span><strong>{money(allowanceUsed)} <small>of {money(allowanceTotal)}</small></strong></div><div className="allowance-track"><i style={{ width: `${allowancePercent}%` }} /></div><p>{money(Math.max(0, allowanceTotal - allowanceUsed))} available under this grant</p></div></div><div className="trust-section"><div className="trust-label">DECISION TRACE <span className="trace-id">{run ? `#${run.id.slice(0, 8)}` : '#NO-RUN'}</span></div><div className="decision-list">{traceSteps.length ? traceSteps.map((step, index) => <div className="decision" key={`${step.label}-${index}`}><span className={step.done ? 'check' : ''}>{step.done ? '✓' : '·'}</span><div><b>{step.label}</b><small>{step.detail}</small></div></div>) : <p className="empty-trace">Start a run to produce durable tool evidence.</p>}</div></div><div className="policy-note"><span>AI boundary · Gemini 3.7 Flash</span><p>The free-tier model may select SKUs and quantities. Prices, totals, identity, inventory, authority, payment state, and reconciliation are deterministic.</p></div><button className="audit-button" onClick={() => setView('inspector')}>Open full audit trail <span>↗</span></button></aside>
+      <aside className="trust-panel"><div className="trust-head"><div><span className="pulse"><i /></span><div><h2>Trust Inspector</h2><p>Every money action, explained</p></div></div></div><div className="trust-section"><div className="trust-label">ACTIVE DELEGATION <span>{grant?.status || (connection === 'preview' ? 'PREVIEW' : 'MISSING')}</span></div><div className="fingerprint"><div className="fingerprint-icon">⌘</div><div><b>{agent?.name || 'AgentAuth Buyer v1'}</b><code>{shortFingerprint(agent?.jwk_thumbprint)}</code></div></div><div className="allowance"><div><span>Allowance reserved or spent</span><strong>{money(allowanceUsed)} <small>of {money(allowanceTotal)}</small></strong></div><div className="allowance-track"><i style={{ width: `${allowancePercent}%` }} /></div><p>{money(Math.max(0, allowanceTotal - allowanceUsed))} available under this grant</p></div></div><div className="trust-section"><div className="trust-label">DECISION TRACE <span className="trace-id">{run ? `#${run.id.slice(0, 8)}` : '#NO-RUN'}</span></div><div className="decision-list">{traceSteps.length ? traceSteps.map((step, index) => <div className="decision" key={`${step.label}-${index}`}><span className={step.done ? 'check' : ''}>{step.done ? '✓' : '·'}</span><div><b>{step.label}</b><small>{step.detail}</small></div></div>) : <p className="empty-trace">Start a run to produce durable tool evidence.</p>}</div></div><div className="policy-note"><span>AI boundary · Gemini 3.5 Flash Lite</span><p>The free-tier model may select SKUs and quantities. Prices, totals, identity, inventory, authority, payment state, and reconciliation are deterministic.</p></div><button className="audit-button" onClick={() => setView('inspector')}>Open full audit trail <span>↗</span></button></aside>
     </div>
   </main>;
 }
