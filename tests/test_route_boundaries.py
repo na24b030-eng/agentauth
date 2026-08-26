@@ -39,6 +39,15 @@ def test_failure_fixture_requires_user_session_and_not_agent_pop() -> None:
     assert require_agent_proof not in dependencies
 
 
+def test_demo_reset_requires_user_session_and_not_agent_pop() -> None:
+    route = next(
+        route for route in app.routes if route.path == "/v1/developer/reset-demo"
+    )
+    dependencies = {dependency.call for dependency in route.dependant.dependencies}
+    assert merchant_user in dependencies
+    assert require_agent_proof not in dependencies
+
+
 def test_nonce_replay_fixture_requires_agent_user_session() -> None:
     route = next(
         route for route in agent_app.routes if route.path == "/v1/developer/replay-nonce"

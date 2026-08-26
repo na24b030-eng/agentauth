@@ -4,10 +4,10 @@ Revision ID: 0001_initial
 Revises: none
 """
 
-from alembic import op
-
 from trustcart import models  # noqa: F401
 from trustcart.db import Base
+
+from alembic import op
 
 revision = "0001_initial"
 down_revision = None

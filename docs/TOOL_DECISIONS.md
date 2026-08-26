@@ -5,7 +5,7 @@ interpretation from deterministic authority.
 
 | Concern | Selected tool | Reason | Explicitly not used |
 |---|---|---|---|
-| Natural-language goal and substitutions | One Gemini 3.5 Flash Lite agent using the native Google GenAI SDK | The problem is semantic and benefits from tool selection, comparison and clarification. The free tier keeps the buildathon reproducible without billing. Live tool-call probes selected Flash Lite after Gemini 3.7 Flash repeatedly exceeded the bounded run deadline; representative evals still decide low vs medium thinking. | Rules-only NLU would be brittle; an OpenAI paid model conflicts with the zero-cost constraint, and a multi-agent graph adds latency and failure surfaces without independent roles. |
+| Natural-language goal and substitutions | One Gemini 3.5 Flash Lite agent using the native Google GenAI SDK, low thinking | The problem is semantic and benefits from tool selection, comparison and clarification. The free tier keeps the buildathon reproducible without billing. The committed 80-run comparison selected low: 97.5% vs 92.5% completion, fewer tools, 23.6% fewer tokens and zero constraint violations. | Rules-only NLU would be brittle; an OpenAI paid model conflicts with the zero-cost constraint, and a multi-agent graph adds latency and failure surfaces without independent roles. |
 | Price, tax, fees and totals | Python quote service + PostgreSQL snapshot | Money must be reproducible and independently checkable. | LLM arithmetic. |
 | Delegated authority | Immutable grant digest + conditional SQL counter | Strict shared caps need atomic database truth. | Prompt policy, Redis counters or model memory. |
 | Caller authenticity | ES256 P-256 PoP + JWK thumbprint | Proves possession of the registered agent key and binds the exact request. | Bearer grant IDs, blockchain and a claimed UAP implementation. |
@@ -20,3 +20,9 @@ interpretation from deterministic authority.
 The central judgment boundary is enforceable in code: `place_order` has an empty argument schema and
 is invisible until trusted runtime context contains an unexpired Quote. Even then, the merchant API
 revalidates the Quote, grant and inventory; prompt compliance is never a security boundary.
+
+The runtime also requires delivery evidence before a Quote: a postcode must appear in the buyer's
+message or come from their authenticated saved profile after they explicitly request their usual
+basket. A Quote delivery option must have been returned for that trusted postcode. This structural
+gate was added after a real eval showed that prompt instructions alone did not prevent postcode
+invention on vague requests.

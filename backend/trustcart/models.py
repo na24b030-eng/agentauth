@@ -41,6 +41,7 @@ class User(TimestampMixin, Base):
     email: Mapped[str] = mapped_column(String(320), unique=True)
     display_name: Mapped[str] = mapped_column(String(120))
     passcode_hash: Mapped[str] = mapped_column(Text)
+    default_postcode: Mapped[str] = mapped_column(String(6), default="560001")
     usual_basket: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
 
 

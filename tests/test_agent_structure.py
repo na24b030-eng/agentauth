@@ -1,3 +1,5 @@
+import asyncio
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -94,6 +96,39 @@ async def test_unavailable_action_tool_is_rejected_without_execution() -> None:
     assert result["ok"] is False
     assert result["error"]["code"] == "TOOL_NOT_AVAILABLE"
     assert ctx.checkout_created is False
+
+
+@pytest.mark.asyncio
+async def test_delivery_postcode_requires_buyer_or_saved_profile_evidence() -> None:
+    ctx = context(quoted=False, auto_execute=True)
+    ctx.persist_events = False
+
+    result = await execute_tool(
+        ctx, "get_delivery_options", {"postcode": "560001"}
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "POSTCODE_CLARIFICATION_REQUIRED"
+    assert ctx.verified_delivery_option_ids == set()
+
+
+@pytest.mark.asyncio
+async def test_quote_requires_a_verified_delivery_option() -> None:
+    ctx = context(quoted=False, auto_execute=True)
+    ctx.persist_events = False
+
+    result = await execute_tool(
+        ctx,
+        "quote_cart",
+        {
+            "items": [{"sku": "MILK-1L", "quantity": 1}],
+            "delivery_option_id": "tonight",
+        },
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "DELIVERY_OPTION_REQUIRED"
+    assert ctx.active_quote is None
 
 
 @pytest.mark.asyncio
@@ -312,6 +347,61 @@ async def test_gemini_free_tier_quota_failure_is_typed() -> None:
         await agent.run("Order milk", ctx, api_key="test-key")
 
     assert raised.value.code == "MODEL_RATE_LIMITED"
+
+
+@pytest.mark.asyncio
+async def test_gemini_transport_failure_is_typed_and_client_is_closed() -> None:
+    closed = False
+
+    class UnreachableModels:
+        async def generate_content(self, **_):
+            raise httpx.ConnectError("temporary DNS failure")
+
+    class FakeAio:
+        models = UnreachableModels()
+
+        async def aclose(self):
+            nonlocal closed
+            closed = True
+
+    class FakeClient:
+        aio = FakeAio()
+
+    ctx = context(quoted=False, auto_execute=True)
+    ctx.persist_events = False
+    agent = GeminiCommerceAgent(client_factory=lambda **_: FakeClient())
+
+    with pytest.raises(TrustCartError) as raised:
+        await agent.run("Order milk", ctx, api_key="test-key")
+
+    assert raised.value.code == "MODEL_PROVIDER_UNAVAILABLE"
+    assert closed is True
+
+
+@pytest.mark.asyncio
+async def test_slow_model_call_obeys_the_agent_wall_clock() -> None:
+    class SlowModels:
+        async def generate_content(self, **_):
+            await asyncio.sleep(5)
+
+    class FakeAio:
+        models = SlowModels()
+
+        async def aclose(self):
+            return None
+
+    class FakeClient:
+        aio = FakeAio()
+
+    ctx = context(quoted=False, auto_execute=True)
+    ctx.persist_events = False
+    ctx.started_at = time.monotonic() - 19.9
+    agent = GeminiCommerceAgent(client_factory=lambda **_: FakeClient())
+
+    with pytest.raises(TrustCartError) as raised:
+        await agent.run("Show milk", ctx, api_key="test-key")
+
+    assert raised.value.code == "RUN_TIMEOUT"
 
 
 @pytest.mark.asyncio

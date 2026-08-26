@@ -9,7 +9,7 @@ from typing import Annotated
 from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from sqlalchemy import or_, select
+from sqlalchemy import delete, or_, select
 from sqlalchemy.orm import Session
 
 from .audit import AuditFact, append_audit
@@ -29,16 +29,25 @@ from .demo_faults import set_demo_fault
 from .enums import CheckoutStatus, PaymentMode
 from .errors import AuthorizationError, TrustCartError
 from .models import (
+    AgentRun,
+    AgentToolEvent,
+    AllowanceReservation,
     AuditEvent,
     Checkout,
     DelegationGrant,
+    DemoFault,
     GrantRequest,
     Inventory,
+    InventoryReservation,
+    PaymentAttempt,
     Product,
+    ProofNonce,
     Quote,
+    QuoteItem,
     RazorpayOrder,
     RegisteredAgent,
     User,
+    WebhookEvent,
 )
 from .payments import persist_webhook, process_webhook
 from .pop import (
@@ -70,7 +79,7 @@ from .schemas import (
     WebhookFixtureOut,
     WebhookFixtureRequest,
 )
-from .seed import DEMO_MERCHANT_ID
+from .seed import CATALOG, DEMO_MERCHANT_ID
 
 app = FastAPI(title="AgentAuth Merchant API", version="0.1.0")
 settings = get_settings()
@@ -108,6 +117,59 @@ def payment_config() -> PaymentConfigOut:
         settings.razorpay_key_secret.get_secret_value() if settings.razorpay_key_secret else None
     )
     return PaymentConfigOut(enabled=bool(key_id and secret), key_id=key_id)
+
+
+@app.post("/v1/developer/reset-demo")
+def reset_demo_state(
+    _: User = Depends(merchant_user), session: Session = Depends(get_session)
+) -> dict:
+    """Reset only local fictional state; never orphan configured provider objects."""
+    if settings.environment == "production":
+        raise AuthorizationError(
+            "DEVELOPER_FIXTURES_DISABLED",
+            "Demo reset is disabled in production environments",
+            403,
+        )
+    if settings.razorpay_key_id or settings.razorpay_key_secret:
+        raise TrustCartError(
+            "LOCAL_RESET_DISABLED_WITH_PROVIDER",
+            "Disable Razorpay Test Mode credentials before deleting local demo state",
+            409,
+        )
+    for model in (
+        AgentToolEvent,
+        AgentRun,
+        AuditEvent,
+        WebhookEvent,
+        PaymentAttempt,
+        RazorpayOrder,
+        InventoryReservation,
+        AllowanceReservation,
+        Checkout,
+        QuoteItem,
+        Quote,
+        ProofNonce,
+        DelegationGrant,
+        GrantRequest,
+        DemoFault,
+    ):
+        session.execute(delete(model))
+    seeded_stock = {sku: stock for sku, _, _, _, _, stock in CATALOG}
+    for product, inventory in session.execute(
+        select(Product, Inventory)
+        .join(Inventory, Inventory.product_id == Product.id)
+        .where(Product.merchant_id == DEMO_MERCHANT_ID)
+        .with_for_update()
+    ):
+        inventory.on_hand_qty = seeded_stock.get(product.sku, inventory.on_hand_qty)
+        inventory.reserved_qty = 0
+        inventory.version += 1
+    session.commit()
+    return {
+        "reset": True,
+        "scope": "local_fictional_demo_state",
+        "provider_objects_deleted": False,
+    }
 
 
 @app.post("/v1/developer/faults/{fault_key}", response_model=DemoFaultOut)
@@ -542,6 +604,7 @@ def usual_basket(
         "items": items,
         "estimated_subtotal_paise": estimated_subtotal_paise,
         "estimate_excludes_delivery": True,
+        "default_delivery_postcode": user.default_postcode if user else None,
     }
 
 

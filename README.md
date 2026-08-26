@@ -67,10 +67,12 @@ alembic upgrade head
 Fast tests contain no SQLite concurrency claims:
 
 ```bash
-python -m ruff check backend tests
+python -m ruff check backend tests evals alembic
 python -m pytest -q
+npm audit --audit-level=low
 npm run lint
 npm run build
+npm run test:e2e
 ```
 
 Run the fixed 40-scenario real-model comparison (40 low + 40 medium calls) only when the free-tier
@@ -84,14 +86,18 @@ The harness uses the real Gemini model and production tool definitions against a
 no-money merchant transport. It records completion, tool count, latency and token use; it refuses to
 create a synthetic report when no Gemini key is present.
 
+The committed 2026-08-26 report selected low thinking over medium: 97.5% versus 92.5% completion,
+100% clarification success for both, zero constraint violations for both, fewer tools, lower elapsed
+time and 23.6% fewer tokens. See `evals/report.json` and `docs/EVIDENCE.md` for the preserved outputs
+and the honest misses.
+
 The demonstration uses Gemini's free API tier. Free-tier requests are quota-limited and may be used
 by Google to improve its products, so AgentAuth sends only the buyer's demo prompt and fictional
 catalog/tool facts—never API secrets, agent private keys, payment credentials, or raw webhook bodies.
 
-The concurrency and provider suites require real infrastructure. Set `TEST_DATABASE_URL` to a
-disposable PostgreSQL 16 database and supply Razorpay Test Mode credentials before running marked
-tests. A live provider result and a real-model eval report must be produced before claiming the full
-acceptance criteria; the repository never fabricates either artifact.
+The concurrency suite requires a real disposable PostgreSQL 16 database through `TEST_DATABASE_URL`.
+The committed real-model report is complete; live Razorpay acceptance still requires Test Mode
+credentials. The repository never turns a synthetic provider fixture into a live-provider claim.
 
 ## Security invariants
 
@@ -118,6 +124,13 @@ acceptance criteria; the repository never fabricates either artifact.
 - `backend/trustcart/models.py` — PostgreSQL system of record and constraints.
 - `docs/TOOL_DECISIONS.md` — why every selected and omitted tool belongs where it does.
 - `docs/STATE_MACHINE.md` — lifecycle rules and race ownership.
+- `docs/ARCHITECTURE.md` — trust boundaries and end-to-end money flow.
+- `docs/FAILURE_STORY.md` — the lost-provider-response recovery narrative.
+- `docs/DEMO_RUNBOOK.md` — a timed five-minute recording script.
+- `docs/SECURITY_REVIEW.md` — threat model, controls and explicit limitations.
+- `docs/EVIDENCE.md` — reproducible judging evidence and external gates.
+- `docs/SUBMISSION_CHECKLIST.md` — final delivery acceptance checklist.
+- `artifacts/agentauth-five-minute-demo.webm` — reproducible narrated five-minute live demo.
 
 ## Honest v1 exclusions
 

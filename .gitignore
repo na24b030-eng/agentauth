@@ -12,6 +12,12 @@ __pycache__/
 
 # testing
 /coverage
+/playwright-report/
+/test-results/
+/evals/*.checkpoint
+/artifacts/*.wav
+/artifacts/*.log
+/artifacts/*.png
 
 # next.js
 /.next/

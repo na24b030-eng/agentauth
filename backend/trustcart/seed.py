@@ -40,6 +40,7 @@ def seed_demo(session: Session, settings: Settings) -> dict[str, str]:
             email="demo@trustcart.local",
             display_name="Aarav",
             passcode_hash=hash_passcode(settings.demo_passcode.get_secret_value()),
+            default_postcode="560001",
             usual_basket=[
                 {"sku": "MILK-1L", "quantity": 2},
                 {"sku": "BREAD-WW", "quantity": 1},
@@ -48,6 +49,8 @@ def seed_demo(session: Session, settings: Settings) -> dict[str, str]:
             ],
         )
         session.add(user)
+    else:
+        user.default_postcode = "560001"
     if not settings.agent_private_key_pem:
         raise RuntimeError(
             "TRUSTCART_AGENT_PRIVATE_KEY_PEM is required to seed the registered agent"

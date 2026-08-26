@@ -1,0 +1,55 @@
+name: AgentAuth CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: trustcart
+          POSTGRES_PASSWORD: trustcart
+          POSTGRES_DB: trustcart_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U trustcart -d trustcart_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      TRUSTCART_DATABASE_URL: postgresql+psycopg://trustcart:trustcart@localhost:5432/trustcart_test
+      TEST_DATABASE_URL: postgresql+psycopg://trustcart:trustcart@localhost:5432/trustcart_test
+      TRUSTCART_TEST_DATABASE_IS_DISPOSABLE: "yes"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --upgrade pip pip-audit
+      - run: python -m pip install -e ".[dev]"
+      - run: trustcart init-secrets --output .env
+      - run: alembic upgrade head
+      - run: python -m ruff check backend tests evals alembic
+      - run: python -m pip_audit --strict
+      - run: python -m pytest -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - run: npm audit --audit-level=low
+      - run: npm run lint
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e

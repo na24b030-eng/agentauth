@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 import uuid
 from collections.abc import Awaitable, Callable
@@ -45,6 +46,10 @@ class CommerceRunContext:
     persist_events: bool = True
     checkout_created: bool = False
     approval_requested: bool = False
+    trusted_postcodes: set[str] = field(default_factory=set)
+    verified_delivery_option_ids: set[str] = field(default_factory=set)
+    usual_basket_requested: bool = False
+    may_use_saved_postcode: bool = False
 
     def assert_budget(self) -> None:
         if self.tool_calls >= 10:
@@ -329,7 +334,16 @@ async def get_usual_basket(
     ctx: CommerceRunContext, _: EmptyArguments
 ) -> dict[str, Any]:
     """Return the buyer's usual basket with current catalog and inventory facts."""
+    if not ctx.usual_basket_requested:
+        raise TrustCartError(
+            "USUAL_BASKET_NOT_REQUESTED",
+            "Purchase history is available only when the buyer refers to their usual or regular items",
+            409,
+        )
     result = await merchant_request(ctx, "GET", "/v1/users/me/usual-basket")
+    saved_postcode = result.get("default_delivery_postcode")
+    if ctx.may_use_saved_postcode and isinstance(saved_postcode, str):
+        ctx.trusted_postcodes.add(saved_postcode)
     _record_tool(
         ctx,
         "get_usual_basket",
@@ -345,11 +359,21 @@ async def get_delivery_options(
 ) -> list[dict[str, Any]]:
     """Return exact delivery slots, cutoff timestamps and fees for an Indian postcode."""
     ctx.active_quote = None
+    ctx.verified_delivery_option_ids.clear()
+    if arguments.postcode not in ctx.trusted_postcodes:
+        raise TrustCartError(
+            "POSTCODE_CLARIFICATION_REQUIRED",
+            "Use a postcode supplied by the buyer or their saved postcode after loading the requested usual basket",
+            409,
+        )
     result = await merchant_request(
         ctx,
         "POST",
         "/v1/delivery-options",
         payload={"postcode": arguments.postcode},
+    )
+    ctx.verified_delivery_option_ids.update(
+        str(option["id"]) for option in result if option.get("id")
     )
     _record_tool(
         ctx,
@@ -366,6 +390,12 @@ async def quote_cart(
 ) -> dict[str, Any]:
     """Create a canonical immutable quote from SKU/quantity items and one delivery option."""
     ctx.active_quote = None
+    if arguments.delivery_option_id not in ctx.verified_delivery_option_ids:
+        raise TrustCartError(
+            "DELIVERY_OPTION_REQUIRED",
+            "A delivery option returned for a trusted postcode is required before quoting",
+            409,
+        )
     serialized_items = [item.model_dump() for item in arguments.items]
     result = await merchant_request(
         ctx,
@@ -470,7 +500,10 @@ async def request_purchase_approval(
 
 INSTRUCTIONS = """You are AgentAuth's single commerce discovery agent.
 Interpret the buyer's goal and use tools for facts. Never invent a price, total, SKU, user, grant,
-quote ID, or checkout state. You MUST obtain a successful canonical quote before purchase. Browse-only
+quote ID, postcode, or checkout state. You MUST obtain delivery options for a buyer-supplied postcode
+before requesting a canonical quote. When the buyer explicitly refers to their usual/regular basket,
+get_usual_basket may provide their saved postcode; never use that saved address for a "new address".
+Browse-only
 or comparative requests must never purchase. Ask a concise clarification when constraints are ambiguous.
 get_usual_basket already returns current exact SKU, price, category, grant-scope, and availability facts;
 do not search those SKUs again unless you need a substitution or the basket reports a missing item.
@@ -633,6 +666,16 @@ class GeminiCommerceAgent:
         *,
         api_key: str,
     ) -> GeminiRunResult:
+        lowered_message = message.casefold()
+        ctx.trusted_postcodes.update(re.findall(r"\b[1-9][0-9]{5}\b", message))
+        ctx.usual_basket_requested = any(
+            phrase in lowered_message
+            for phrase in ("usual", "regular", "normally", "typically", "purchase history")
+        )
+        ctx.may_use_saved_postcode = ctx.usual_basket_requested and not any(
+            phrase in lowered_message
+            for phrase in ("new address", "different address", "another address")
+        )
         client = self._client_factory(
             api_key=api_key,
             http_options=types.HttpOptions(
@@ -655,31 +698,41 @@ class GeminiCommerceAgent:
                     else None
                 )
                 try:
-                    response = await client.aio.models.generate_content(
-                        model=self.model,
-                        contents=contents,
-                        config=types.GenerateContentConfig(
-                            system_instruction=INSTRUCTIONS,
-                            temperature=0.2,
-                            max_output_tokens=600,
-                            tools=sdk_tools,
-                            tool_config=(
-                                types.ToolConfig(
-                                    function_calling_config=types.FunctionCallingConfig(
-                                        mode=types.FunctionCallingConfigMode.AUTO
+                    remaining_seconds = max(
+                        0.001, 20 - (time.monotonic() - ctx.started_at)
+                    )
+                    response = await asyncio.wait_for(
+                        client.aio.models.generate_content(
+                            model=self.model,
+                            contents=contents,
+                            config=types.GenerateContentConfig(
+                                system_instruction=INSTRUCTIONS,
+                                temperature=0.2,
+                                max_output_tokens=600,
+                                tools=sdk_tools,
+                                tool_config=(
+                                    types.ToolConfig(
+                                        function_calling_config=types.FunctionCallingConfig(
+                                            mode=types.FunctionCallingConfigMode.AUTO
+                                        )
                                     )
-                                )
-                                if sdk_tools
-                                else None
-                            ),
-                            automatic_function_calling=types.AutomaticFunctionCallingConfig(
-                                disable=True
-                            ),
-                            thinking_config=types.ThinkingConfig(
-                                thinking_level=_thinking_level(self.thinking_level)
+                                    if sdk_tools
+                                    else None
+                                ),
+                                automatic_function_calling=types.AutomaticFunctionCallingConfig(
+                                    disable=True
+                                ),
+                                thinking_config=types.ThinkingConfig(
+                                    thinking_level=_thinking_level(self.thinking_level)
+                                ),
                             ),
                         ),
+                        timeout=remaining_seconds,
                     )
+                except TimeoutError as exc:
+                    raise TrustCartError(
+                        "RUN_TIMEOUT", "The run reached its 20-second wall-clock limit", 408
+                    ) from exc
                 except genai_errors.ClientError as exc:
                     status = int(getattr(exc, "code", 400) or 400)
                     if status in {401, 403}:
@@ -702,6 +755,12 @@ class GeminiCommerceAgent:
                     raise TrustCartError(
                         "MODEL_PROVIDER_UNAVAILABLE",
                         "Gemini is temporarily unavailable; the run can be retried safely",
+                        503,
+                    ) from exc
+                except httpx.TransportError as exc:
+                    raise TrustCartError(
+                        "MODEL_PROVIDER_UNAVAILABLE",
+                        "Gemini could not be reached; the run can be retried safely",
                         503,
                     ) from exc
                 usage = response.usage_metadata
