@@ -53,9 +53,9 @@ test('mobile layout has no horizontal overflow and primary controls remain reach
 test('unconfigured Razorpay mode is capability-gated', async ({ page }) => {
   const isLive = await enterWorkspace(page);
   test.skip(!isLive, 'Razorpay configuration is a live-service capability');
-  const lab = page.getByRole('button', { name: 'Razorpay Payment Lab' });
+  const lab = page.getByRole('button', { name: 'Razorpay Test' });
   await expect(lab).toBeDisabled();
-  await expect(page.getByText(/Razorpay Lab needs Test Mode keys/)).toBeVisible();
+  await expect(page.getByText(/Razorpay Test Mode is not configured/)).toBeVisible();
 });
 
 test('@live autonomous simulator completes with one visible submitted prompt', async ({ page }) => {

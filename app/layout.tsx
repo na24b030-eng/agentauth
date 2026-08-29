@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'AgentAuth — Agentic commerce, bounded by design',
-  description: 'A UAP-inspired authorization and checkout gateway for AI buyers.',
+  title: 'AgentAuth — Delegated commerce control plane',
+  description: 'Issue bounded purchasing authority to AI buyers and audit every checkout decision.',
 };
 
 export default function RootLayout({
