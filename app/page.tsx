@@ -847,13 +847,13 @@ export default function Home() {
                 ? "Preview fixture"
                 : "Test services online"}
             </div>
-            <button className="account" aria-label="Current demo user">
+            <div className="account" aria-label="Current demo user">
               <span>{displayName.slice(0, 2).toUpperCase()}</span>
               <div>
                 <b>{displayName}</b>
                 <small>Demo account</small>
               </div>
-            </button>
+            </div>
           </div>
         </div>
       </header>
@@ -861,8 +861,10 @@ export default function Home() {
         <div>
           {navItems.map(([key, Icon, label]) => (
             <button
+              type="button"
               key={key}
               className={view === key ? "active" : ""}
+              aria-current={view === key ? "page" : undefined}
               onClick={() => setView(key)}
             >
               <Icon size={15} />

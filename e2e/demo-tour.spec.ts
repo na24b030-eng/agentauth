@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 const prompt = 'Order my usual groceries under ₹900 for delivery tonight';
 
-test('record the five-minute AgentAuth judging tour', async ({ page }) => {
+test('record the five-minute AgentAuth product walkthrough', async ({ page }) => {
   test.skip(process.env.E2E_RECORD_DEMO !== '1', 'Set E2E_RECORD_DEMO=1 to record the tour');
   test.setTimeout(420_000);
   page.setDefaultTimeout(15_000);
@@ -19,7 +19,7 @@ test('record the five-minute AgentAuth judging tour', async ({ page }) => {
   await page.waitForTimeout(15_000);
 
   await page.getByRole('button', { name: 'Developer' }).click();
-  await expect(page.getByRole('heading', { name: 'Break it safely.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Recovery lab' })).toBeVisible();
   const reset = page.getByRole('button', { name: /Reset local demo/ });
   if (await reset.isEnabled()) {
     await reset.click();

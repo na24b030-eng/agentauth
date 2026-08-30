@@ -61,8 +61,8 @@ Audit events are committed in the same transaction as the transition they explai
 monotonic sequence, reason code, human explanation, monetary effect, previous hash, and current hash.
 This is presented as tamper-evident engineering evidence, not as regulatory immutable storage.
 
-The Failure Lab makes recovery visible. The nonce replay control sends the exact same signed request
-twice: the first request succeeds, while the second is rejected as proof replayed. The model-timeout
+The Recovery Lab makes failure handling visible. The nonce replay control sends the exact same signed
+request twice: the first request succeeds, while the second is rejected as proof replayed. The model-timeout
 control returns a typed recoverable outcome. The webhook fixture is clearly disclosed as synthetic and
 requires a real Test Mode Order before it can test captured, stale-failed, and duplicate delivery.
 

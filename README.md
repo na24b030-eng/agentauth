@@ -9,6 +9,15 @@ PostgreSQL-backed state and cryptographic proof of possession. The included paym
 the complete authorization and reservation lifecycle without moving real money. A Razorpay Test Mode
 adapter is available as an optional provider integration.
 
+## Live interfaces
+
+- [AgentAuth on OpenAI Sites](https://agentauth-buildathon.dikshayeole02.chatgpt.site/)
+- [AgentAuth on Vercel](https://agentauth-orpin.vercel.app/)
+
+Both deployments serve the same frontend. Live agent execution requires the local PostgreSQL and
+Python services described below; without those services the interface remains in its explicitly
+labelled preview state.
+
 ## Core guarantees
 
 - Every protected agent request is signed with a registered P-256 key.
