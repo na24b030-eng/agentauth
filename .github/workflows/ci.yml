@@ -36,7 +36,10 @@ jobs:
       - run: trustcart init-secrets --output .env
       - run: alembic upgrade head
       - run: python -m ruff check backend tests evals alembic
-      - run: python -m pip_audit --strict
+      # Audit declared project dependencies. Auditing the installed environment
+      # in strict mode also treats our unpublished editable package as a failed
+      # PyPI lookup, which is not a vulnerability finding.
+      - run: python -m pip_audit --strict .
       - run: python -m pytest -q
 
   frontend:
