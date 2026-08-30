@@ -97,7 +97,9 @@ async def lifespan(_: FastAPI):
 app = FastAPI(title="AgentAuth Buyer Agent API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin],
+    allow_origins=[
+        origin.strip() for origin in settings.frontend_origin.split(",") if origin.strip()
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
     allow_credentials=False,

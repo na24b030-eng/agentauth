@@ -6,7 +6,6 @@ import {
   AlertTriangle,
   ArrowRight,
   ArrowUpRight,
-  BadgeIndianRupee,
   BadgeCheck,
   Bot,
   Check,
@@ -120,12 +119,6 @@ type ToolEvent = {
   summary: string;
 };
 
-declare global {
-  interface Window {
-    Razorpay?: new (options: Record<string, unknown>) => { open: () => void };
-  }
-}
-
 const envMerchant = process.env.NEXT_PUBLIC_MERCHANT_API_URL ?? "";
 const envAgent = process.env.NEXT_PUBLIC_AGENT_API_URL ?? "";
 const isLocalBrowser = () =>
@@ -234,32 +227,6 @@ async function requestJson<T>(
   return data;
 }
 
-async function loadRazorpayScript(): Promise<void> {
-  if (window.Razorpay) return;
-  await new Promise<void>((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>(
-      "script[data-agentauth-razorpay]",
-    );
-    if (existing) {
-      existing.addEventListener("load", () => resolve(), { once: true });
-      existing.addEventListener(
-        "error",
-        () => reject(new Error("Razorpay Checkout failed to load")),
-        { once: true },
-      );
-      return;
-    }
-    const script = document.createElement("script");
-    script.src = "https://checkout.razorpay.com/v1/checkout.js";
-    script.async = true;
-    script.dataset.agentauthRazorpay = "true";
-    script.onload = () => resolve();
-    script.onerror = () =>
-      reject(new Error("Razorpay Checkout failed to load"));
-    document.head.appendChild(script);
-  });
-}
-
 export default function Home() {
   const [connection, setConnection] = useState<Connection>("checking");
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
@@ -268,8 +235,7 @@ export default function Home() {
   const [agent, setAgent] = useState<AgentIdentity | null>(null);
   const [grant, setGrant] = useState<Grant | null>(null);
   const [view, setView] = useState<View>("commerce");
-  const [mode, setMode] = useState<Mode>("DELEGATED_DEBIT_SIMULATOR");
-  const [razorpayConfigured, setRazorpayConfigured] = useState(false);
+  const mode: Mode = "DELEGATED_DEBIT_SIMULATOR";
   const [draft, setDraft] = useState(
     "Order my usual groceries under ₹900 for delivery tonight",
   );
@@ -345,17 +311,15 @@ export default function Home() {
   }, [checkout, toolEvents]);
 
   async function loadIdentityAndGrants(activeToken: string) {
-    const [identity, grants, paymentConfig] = await Promise.all([
+    const [identity, grants] = await Promise.all([
       requestJson<AgentIdentity>(
         merchantBase(),
         "/v1/agents/current",
         activeToken,
       ),
       requestJson<Grant[]>(merchantBase(), "/v1/grants", activeToken),
-      requestJson<{ enabled: boolean }>(merchantBase(), "/v1/payment-config"),
     ]);
     setAgent(identity);
-    setRazorpayConfigured(paymentConfig.enabled);
     const active =
       grants.find(
         (item) =>
@@ -666,54 +630,7 @@ export default function Home() {
     }
   }
 
-  async function openRazorpay() {
-    if (!checkout?.razorpay_order_id) {
-      setError("The worker has not created the Razorpay Test Order yet.");
-      return;
-    }
-    setError("");
-    try {
-      const config = await requestJson<{
-        enabled: boolean;
-        key_id: string | null;
-      }>(merchantBase(), "/v1/payment-config");
-      if (!config.enabled || !config.key_id)
-        throw new Error(
-          "Razorpay Test Mode credentials are not configured on the server",
-        );
-      await loadRazorpayScript();
-      if (!window.Razorpay) throw new Error("Razorpay Checkout is unavailable");
-      new window.Razorpay({
-        key: config.key_id,
-        order_id: checkout.razorpay_order_id,
-        amount: checkout.amount_paise,
-        currency: checkout.currency,
-        name: "AgentAuth Payment Lab",
-        description: `Test Mode checkout ${checkout.receipt}`,
-        handler: () =>
-          setNotice(
-            "Checkout returned successfully. Waiting for the signed capture webhook before marking this paid.",
-          ),
-        modal: {
-          ondismiss: () =>
-            setNotice(
-              "Payment window closed. The reservation remains pending until cancellation or reconciliation.",
-            ),
-        },
-        theme: { color: "#2858d6" },
-      }).open();
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Could not open Razorpay Checkout",
-      );
-    }
-  }
-
-  async function armFault(
-    key: "DROP_ORDER_CREATE_RESPONSE" | "FORCE_MODEL_TIMEOUT",
-  ) {
+  async function armFault(key: "FORCE_MODEL_TIMEOUT") {
     if (!token || connection !== "ready") return;
     setError("");
     try {
@@ -725,9 +642,7 @@ export default function Home() {
         current.includes(key) ? current : [...current, key],
       );
       setNotice(
-        key === "DROP_ORDER_CREATE_RESPONSE"
-          ? "One-shot lost-response fixture armed. The next Razorpay Order will reconcile by receipt."
-          : "One-shot typed model-timeout fixture armed for the next agent run.",
+        "One-shot typed model-timeout fixture armed for the next agent run.",
       );
     } catch (cause) {
       setError(
@@ -997,40 +912,15 @@ export default function Home() {
                 </div>
                 <div className="mode-control">
                   <span>
-                    <SlidersHorizontal size={13} /> Execution mode
+                    <SlidersHorizontal size={13} /> Execution policy
                   </span>
-                  <div className="mode-switch" aria-label="Payment mode">
-                    <button
-                      type="button"
-                      className={
-                        mode === "DELEGATED_DEBIT_SIMULATOR" ? "selected" : ""
-                      }
-                      onClick={() => setMode("DELEGATED_DEBIT_SIMULATOR")}
-                    >
-                      <Bot size={14} /> Simulator
-                    </button>
-                    <button
-                      type="button"
-                      className={
-                        mode === "RAZORPAY_PAYMENT_LAB" ? "selected" : ""
-                      }
-                      onClick={() => setMode("RAZORPAY_PAYMENT_LAB")}
-                      disabled={!razorpayConfigured}
-                      title={
-                        razorpayConfigured
-                          ? "Create a real Razorpay Test Mode Order"
-                          : "Add Razorpay Test Mode credentials to enable this lab"
-                      }
-                    >
-                      <BadgeIndianRupee size={14} /> Razorpay Test
-                    </button>
+                  <div className="mode-switch sandbox-mode" aria-label="Execution policy">
+                    <div className="selected">
+                      <Bot size={14} /> AgentAuth Sandbox
+                    </div>
                   </div>
                   <small className="mode-help">
-                    {mode === "DELEGATED_DEBIT_SIMULATOR"
-                      ? razorpayConfigured
-                        ? "No real payment. Same authorization pipeline."
-                        : "Simulation only · Razorpay Test Mode is not configured."
-                      : "Creates a Test Mode Order; paid only after capture."}
+                    Deterministic settlement · no real money or personal KYC
                   </small>
                 </div>
               </div>
@@ -1236,12 +1126,6 @@ export default function Home() {
                                 Cancel before execution
                               </button>
                             )}
-                            {mode === "RAZORPAY_PAYMENT_LAB" &&
-                              checkout.status === "PAYMENT_PENDING" && (
-                                <button onClick={openRazorpay}>
-                                  Open Razorpay Test Checkout
-                                </button>
-                              )}
                           </div>
                         )}
                       </div>
@@ -1352,22 +1236,16 @@ export default function Home() {
                 </div>
               </div>
               <div className="developer-grid">
-                <button
-                  disabled={connection !== "ready"}
-                  onClick={() => armFault("DROP_ORDER_CREATE_RESPONSE")}
-                >
+                <button disabled>
                   <span className="lab-icon">
                     <Activity size={17} />
                   </span>
                   <div>
-                    <span>Lost create response</span>
-                    <b>
-                      {armedFaults.includes("DROP_ORDER_CREATE_RESPONSE")
-                        ? "ARMED ONCE"
-                        : "ARM WORKER"}
-                    </b>
+                    <span>Provider-response recovery</span>
+                    <b>OPTIONAL ADAPTER</b>
                     <small>
-                      Discard success, then recover exactly one Order by receipt
+                      Receipt lookup is implemented and integration-tested; a
+                      provider sandbox is required for a live replay
                     </small>
                   </div>
                   <ChevronRight size={16} />

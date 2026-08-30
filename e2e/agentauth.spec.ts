@@ -75,13 +75,12 @@ test("mobile layout has no horizontal overflow and primary controls remain reach
   ).toBeVisible();
 });
 
-test("unconfigured Razorpay mode is capability-gated", async ({ page }) => {
+test("sandbox execution is explicitly disclosed", async ({ page }) => {
   const isLive = await enterWorkspace(page);
   test.skip(!isLive, "Razorpay configuration is a live-service capability");
-  const lab = page.getByRole("button", { name: "Razorpay Test" });
-  await expect(lab).toBeDisabled();
+  await expect(page.getByText("AgentAuth Sandbox")).toBeVisible();
   await expect(
-    page.getByText(/Razorpay Test Mode is not configured/),
+    page.getByText(/Deterministic settlement · no real money or personal KYC/),
   ).toBeVisible();
 });
 

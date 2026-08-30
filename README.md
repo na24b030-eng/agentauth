@@ -2,11 +2,12 @@
 
 AgentAuth is a merchant-side, UAP-inspired authorization and checkout gateway for AI buyers. A
 single Gemini commerce agent may discover and propose products, while deterministic services own
-identity, prices, inventory, grants, money arithmetic, checkout state, Razorpay state and recovery.
+identity, prices, inventory, grants, money arithmetic, checkout state and recovery.
 
 This is a Razorpay Buildathon project. It is not NPCI UAP compliance, a bank identity system, or a
-real autonomous UPI debit. `RAZORPAY_PAYMENT_LAB` creates real Test Mode Orders;
-`DELEGATED_DEBIT_SIMULATOR` is permanently labelled simulation.
+real autonomous UPI debit. The primary `DELEGATED_DEBIT_SIMULATOR` path is permanently labelled as
+the AgentAuth Sandbox and never claims that money moved. A Razorpay Test Mode adapter remains an
+optional integration boundary, but the submission does not require personal KYC or provider keys.
 
 ## What runs
 
@@ -21,8 +22,8 @@ their own raw-body HMAC path and never pass through agent PoP.
 
 ## Local setup
 
-Requirements: Python 3.12, Node 22+, Docker with Compose, a free-tier Gemini API key, and optional
-Razorpay Test Mode credentials.
+Requirements: Python 3.12, Node 22+, Docker with Compose and a free-tier Gemini API key. Razorpay
+Test Mode credentials are optional and are not required for the judge-facing sandbox.
 
 ```bash
 python -m pip install -e ".[dev]"

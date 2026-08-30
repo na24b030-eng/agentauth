@@ -19,7 +19,7 @@ services:
     command: ["alembic", "upgrade", "head"]
     environment: &shared
       TRUSTCART_DATABASE_URL: postgresql+psycopg://trustcart:trustcart@postgres:5432/trustcart
-      TRUSTCART_FRONTEND_ORIGIN: http://localhost:3000
+      TRUSTCART_FRONTEND_ORIGIN: ${TRUSTCART_FRONTEND_ORIGIN:-http://localhost:3000}
       TRUSTCART_MERCHANT_API_URL: http://merchant-api:8000
       TRUSTCART_AGENT_API_URL: http://agent-api:8001
     depends_on:

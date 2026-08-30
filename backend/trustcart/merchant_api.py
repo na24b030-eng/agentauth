@@ -85,7 +85,9 @@ app = FastAPI(title="AgentAuth Merchant API", version="0.1.0")
 settings = get_settings()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin],
+    allow_origins=[
+        origin.strip() for origin in settings.frontend_origin.split(",") if origin.strip()
+    ],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

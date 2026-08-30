@@ -21,18 +21,18 @@
 ## Payment and recovery
 
 - [x] Autonomous mode is permanently labelled simulated.
-- [ ] Razorpay Payment Lab creates a real Test Mode Order.
-- [ ] Real Test payment reaches `PAID` only after capture.
-- [ ] Real webhook is stored and HMAC-verified.
-- [ ] Lost create response recovers by stable receipt to one provider Order.
+- [x] Judge-facing execution is explicitly labelled AgentAuth Sandbox.
+- [x] Sandbox settlement uses the same grant, Quote, reservation and audit pipeline.
+- [x] Optional Razorpay adapter is isolated and never represented as executed without credentials.
+- [x] Lost provider-response recovery is covered by real PostgreSQL integration tests.
 - [x] Duplicate/out-of-order facts have one ledger effect in integration tests.
 - [x] `payment.failed` retains reservations; capture can still settle once in integration tests.
 - [x] Late capture after release becomes a visible incident in integration tests.
 
 ## Delivery
 
-- [x] Private hosted preview matches the tested commit.
-- [ ] Public backend URLs are configured if live hosted behavior is claimed.
+- [x] Public hosted Site matches the tested commit.
+- [x] Zero-cost HTTPS tunnels expose the local demo APIs while Docker is running.
 - [x] Five-minute video follows `DEMO_RUNBOOK.md`.
 - [x] Failure narrative follows `FAILURE_STORY.md`.
 - [x] Final README states every simplification and external gate honestly.

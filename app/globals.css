@@ -403,6 +403,23 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   font-weight: 690;
 }
 .mode-switch button.selected { background: var(--signal); color: var(--ink); box-shadow: 0 5px 15px rgb(0 0 0 / 18%); }
+.mode-switch.sandbox-mode { display: block; padding: 4px; }
+.mode-switch.sandbox-mode .selected {
+  align-items: center;
+  background: var(--signal);
+  border-radius: 8px;
+  box-shadow: 0 5px 15px rgb(0 0 0 / 18%);
+  color: var(--ink);
+  display: flex;
+  font-size: 10px;
+  font-weight: 800;
+  gap: 7px;
+  justify-content: center;
+  letter-spacing: .035em;
+  min-height: 34px;
+  padding: 0 14px;
+  text-transform: uppercase;
+}
 .mode-help { display: block; margin-top: 8px; color: #7e827f; font-size: 8px; line-height: 1.45; }
 
 .session-card {

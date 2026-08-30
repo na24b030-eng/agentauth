@@ -79,12 +79,13 @@ These cannot be truthfully completed without the account-bound values named belo
 
 | Gate | Required external input | Current behavior without it |
 |---|---|---|
-| Live Razorpay Test Order and capture | Test Mode key ID + secret | Payment Lab is disabled with an explicit explanation |
-| Authentic webhook delivery | Test Mode webhook URL + secret configured in Razorpay Dashboard | Local HMAC fixtures remain clearly labelled synthetic |
-| Public Python/PostgreSQL backend | Authenticated Railway/project access or equivalent public host | Sites deployment renders an honest preview fixture |
+| Optional live Razorpay Test Order and capture | Organizer-provided Test Mode key ID + secret | Public Site exposes only the clearly labelled AgentAuth Sandbox |
+| Authentic Razorpay webhook delivery | Organizer-provided webhook URL + secret | HMAC inbox and convergence remain integration-tested, not claimed live |
+| Public Python/PostgreSQL backend | Local Docker and free HTTPS tunnel running | Site falls back to an honest interactive preview if the demo host is offline |
 
-The Railway CLI was probed on 2026-08-26 and returned `Unauthorized`; no account-scoped deployment
-was claimed. Razorpay configuration health remains false because Test Mode keys are absent.
+The judge-facing backend is temporarily exposed from local Docker through free HTTPS tunnels. This
+has no uptime guarantee and is intentionally presented as buildathon infrastructure, not production
+hosting. Razorpay configuration health remains false because personal KYC was intentionally avoided.
 
 No source code change can manufacture those account credentials or turn a synthetic event into live
 provider evidence. Once credentials are available, the same adapter, worker and UI paths are used;
