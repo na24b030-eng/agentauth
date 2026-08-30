@@ -1,6 +1,6 @@
 # Five-minute demonstration runbook
 
-Use seeded fictional data and keep the Trust Inspector open in a second tab. The judge-facing path
+Use seeded fictional data and keep the Trust Inspector open in a second tab. The primary walkthrough
 uses the deterministic AgentAuth Sandbox: no PAN, provider credentials, real money or UPI transfer.
 
 | Time | Action | Evidence / narration |

@@ -1,4 +1,4 @@
-# Submission checklist
+# Release checklist
 
 ## Repository and reproducibility
 
@@ -21,7 +21,7 @@
 ## Payment and recovery
 
 - [x] Autonomous mode is permanently labelled simulated.
-- [x] Judge-facing execution is explicitly labelled AgentAuth Sandbox.
+- [x] Default execution is explicitly labelled AgentAuth Sandbox.
 - [x] Sandbox settlement uses the same grant, Quote, reservation and audit pipeline.
 - [x] Optional Razorpay adapter is isolated and never represented as executed without credentials.
 - [x] Lost provider-response recovery is covered by real PostgreSQL integration tests.

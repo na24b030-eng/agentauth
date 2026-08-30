@@ -59,7 +59,7 @@ five-minute proof window.
 
 Audit events are committed in the same transaction as the transition they explain. Each Checkout has a
 monotonic sequence, reason code, human explanation, monetary effect, previous hash, and current hash.
-This is presented as tamper-evident buildathon evidence, not as regulatory immutable storage.
+This is presented as tamper-evident engineering evidence, not as regulatory immutable storage.
 
 The Failure Lab makes recovery visible. The nonce replay control sends the exact same signed request
 twice: the first request succeeds, while the second is rejected as proof replayed. The model-timeout

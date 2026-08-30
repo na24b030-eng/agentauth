@@ -37,6 +37,6 @@ is claimed.
 
 - Production environment disables all synthetic failure fixtures.
 - Public deployment must use HTTPS and private backend origins with explicit CORS.
-- Razorpay secrets must be Test Mode for the buildathon and rotated after recording.
+- Razorpay credentials, when configured, must be Test Mode values and rotated after demonstrations.
 - A real autonomous debit integration requires provider authorization, bank-grade user issuance,
   consent revocation semantics, KMS/HSM keys, incident response and regulatory review beyond v1.

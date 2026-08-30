@@ -1,5 +1,5 @@
 {
-  "name": "sites-project",
+  "name": "agentauth",
   "version": "0.1.0",
   "private": true,
   "engines": {
@@ -8,6 +8,7 @@
   "scripts": {
     "dev": "vinext dev",
     "build": "vinext build",
+    "build:vercel": "next build",
     "start": "vinext start",
     "lint": "eslint app e2e next.config.ts playwright.config.ts vite.config.ts",
     "test:e2e": "playwright test",

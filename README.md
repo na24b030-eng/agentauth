@@ -1,71 +1,116 @@
 # AgentAuth
 
-AgentAuth is a merchant-side, UAP-inspired authorization and checkout gateway for AI buyers. A
-single Gemini commerce agent may discover and propose products, while deterministic services own
-identity, prices, inventory, grants, money arithmetic, checkout state and recovery.
+AgentAuth is an authorization and checkout control plane for AI-driven commerce. It lets a user
+delegate narrowly scoped purchasing authority to a registered software agent while keeping identity,
+pricing, inventory, spending limits, payment state and recovery outside the language model.
 
-This is a Razorpay Buildathon project. It is not NPCI UAP compliance, a bank identity system, or a
-real autonomous UPI debit. The primary `DELEGATED_DEBIT_SIMULATOR` path is permanently labelled as
-the AgentAuth Sandbox and never claims that money moved. A Razorpay Test Mode adapter remains an
-optional integration boundary, but the submission does not require personal KYC or provider keys.
+The application combines a tool-using Gemini commerce agent with deterministic merchant services,
+PostgreSQL-backed state and cryptographic proof of possession. The included payment sandbox executes
+the complete authorization and reservation lifecycle without moving real money. A Razorpay Test Mode
+adapter is available as an optional provider integration.
 
-## What runs
+## Core guarantees
 
-- `agent-api`: the only service with the Gemini key and P-256 agent private key.
-- `merchant-api`: verifies PoP, owns commerce policy, demo login and Razorpay webhook HMAC.
-- `worker`: executes cancel-window work and reconciles ambiguous provider outcomes.
-- PostgreSQL 16: durable state, nonce replay protection, strict shared counters and row locks.
-- React/TypeScript: buyer experience, consent, Trust Inspector and failure lab.
+- Every protected agent request is signed with a registered P-256 key.
+- Grants bind a user, merchant, agent key, category scope, time window and spending limits.
+- The model cannot supply trusted identity, prices, grant IDs, totals or idempotency keys.
+- Quotes are immutable, server-calculated and expire after two minutes.
+- Allowance and inventory are reserved atomically in PostgreSQL.
+- Replayed proofs and duplicate checkout requests are rejected or resolved idempotently.
+- Payment and reconciliation work happens outside database transactions.
+- Money-relevant transitions append hash-linked audit events in the same transaction.
 
-The same backend image runs each Python service via `TRUSTCART_SERVICE_ROLE`. Razorpay webhooks use
-their own raw-body HMAC path and never pass through agent PoP.
+## Architecture
+
+```text
+React buyer interface
+        │
+        ├── Agent API ── Gemini tool orchestration + agent private key
+        │       │
+        │       └── ES256 proof-of-possession
+        │
+        └── Merchant API ── identity, grants, catalog, quotes and checkout policy
+                    │
+               PostgreSQL 16
+                    │
+              Worker service
+                    │
+          deterministic payment sandbox
+          optional Razorpay Test adapter
+```
+
+The system uses one bounded commerce agent. Gemini interprets natural-language intent, selects
+merchant tools, compares factual candidates and explains the result. Deterministic code owns all
+authorization and financial decisions.
+
+## Services
+
+- `agent-api` — runs the Gemini tool loop and signs merchant requests with the agent key.
+- `merchant-api` — authenticates users, verifies proofs, manages grants and owns commerce policy.
+- `worker` — executes delayed work and reconciles ambiguous provider outcomes.
+- PostgreSQL 16 — stores durable state, replay nonces, reservations and audit events.
+- React/TypeScript frontend — provides commerce, consent, trust inspection and failure controls.
+
+The agent service has no payment-provider credentials. The merchant and worker services have no
+Gemini key or agent private key. Webhooks use their own raw-body HMAC authentication path and never
+pass through agent proof-of-possession middleware.
 
 ## Local setup
 
-Requirements: Python 3.12, Node 22+, Docker with Compose and a free-tier Gemini API key. Razorpay
-Test Mode credentials are optional and are not required for the judge-facing sandbox.
+Requirements:
+
+- Docker Desktop with Compose
+- Node.js 22 or newer
+- Python 3.12 or newer
+- A Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+
+Create the local secret file and install dependencies:
 
 ```bash
 python -m pip install -e ".[dev]"
 trustcart init-secrets --output .env
+npm install
 ```
 
-Create a free-tier key in [Google AI Studio](https://aistudio.google.com/app/apikey), add it as
-`TRUSTCART_GEMINI_API_KEY` in `.env`, and optionally add Razorpay Test Mode values. Never commit
-the `.env` file or paste its secrets into the frontend. Then run:
+Set `TRUSTCART_GEMINI_API_KEY` in `.env`. Do not commit `.env`, private PEM material or provider
+credentials.
+
+Start and seed the system:
 
 ```bash
 docker compose up --build -d postgres migrate
 docker compose run --rm agent-api trustcart seed
 docker compose up -d merchant-api agent-api worker
-npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. Service health endpoints are at ports 8000 and 8001. The seeded login
-is `demo@trustcart.local` / `trustcart-demo`.
+Open `http://localhost:3000`. The seeded demo login is:
 
-The frontend uses the local services automatically on localhost. For a hosted build, set
-`NEXT_PUBLIC_MERCHANT_API_URL` and `NEXT_PUBLIC_AGENT_API_URL` before building. If those public API
-URLs are absent, the site deliberately renders a labelled preview fixture and makes no live-provider
-claim. The internal Python package remains `trustcart` to avoid a needless migration of identifiers.
-
-The Failure Lab includes four user-session-protected fixtures: discarding the next successful
-Razorpay Order-create response (so the worker must recover by receipt), returning a typed model
-timeout on the next agent run, replaying one exact signed PoP request, and applying a disclosed
-captured → stale-failed → duplicate-failed webhook sequence to an existing Test Mode Order. The
-webhook fixture is permanently labelled as synthetic evidence, not a provider payment. Every
-fixture is rejected when `TRUSTCART_ENVIRONMENT=production`.
-
-Migrations against an empty database:
-
-```bash
-alembic upgrade head
+```text
+Email: demo@trustcart.local
+Passcode: trustcart-demo
 ```
 
-## Verification
+Service health endpoints are available at `http://localhost:8000/health` and
+`http://localhost:8001/health`.
 
-Fast tests contain no SQLite concurrency claims:
+## Configuration
+
+The main environment variables are documented in `.env.example`:
+
+- `TRUSTCART_GEMINI_API_KEY`
+- `TRUSTCART_AGENT_PRIVATE_KEY_PEM`
+- `TRUSTCART_DEMO_AUTH_PRIVATE_KEY_PEM`
+- `TRUSTCART_DEMO_AUTH_PUBLIC_KEY_PEM`
+- `TRUSTCART_DATABASE_URL`
+- `TRUSTCART_FRONTEND_ORIGIN`
+- `NEXT_PUBLIC_MERCHANT_API_URL`
+- `NEXT_PUBLIC_AGENT_API_URL`
+
+Razorpay Test Mode values are optional. When they are absent, AgentAuth uses only the clearly labelled
+deterministic sandbox and never represents a sandbox settlement as a provider payment.
+
+## Verification
 
 ```bash
 python -m ruff check backend tests evals alembic
@@ -76,65 +121,44 @@ npm run build
 npm run test:e2e
 ```
 
-Run the fixed 40-scenario real-model comparison (40 low + 40 medium calls) only when the free-tier
-quota can accommodate 80 model calls:
+Concurrency tests require a disposable PostgreSQL database:
 
 ```bash
-python evals/run_agent_evals.py --output evals/report.json
+TEST_DATABASE_URL=postgresql+psycopg://trustcart:trustcart@localhost:5432/trustcart_test \
+TRUSTCART_TEST_DATABASE_IS_DISPOSABLE=yes \
+python -m pytest -q
 ```
 
-The harness uses the real Gemini model and production tool definitions against a deterministic,
-no-money merchant transport. It records completion, tool count, latency and token use; it refuses to
-create a synthetic report when no Gemini key is present.
+The fixed real-model evaluation compares low and medium Gemini reasoning across 40 scenarios per
+configuration. The committed report records completion, constraint violations, clarification quality,
+tool count, latency and token use in `evals/report.json`.
 
-The committed 2026-08-26 report selected low thinking over medium: 97.5% versus 92.5% completion,
-100% clarification success for both, zero constraint violations for both, fewer tools, lower elapsed
-time and 23.6% fewer tokens. See `evals/report.json` and `docs/EVIDENCE.md` for the preserved outputs
-and the honest misses.
+## Failure handling
 
-The demonstration uses Gemini's free API tier. Free-tier requests are quota-limited and may be used
-by Google to improve its products, so AgentAuth sends only the buyer's demo prompt and fictional
-catalog/tool facts—never API secrets, agent private keys, payment credentials, or raw webhook bodies.
+AgentAuth treats ambiguous external writes as reconciliation problems rather than retry opportunities.
+A stable receipt identifies the semantic operation, workers claim reconciliation with a versioned
+lease, and webhook transitions compete on the same checkout row lock. Duplicate and out-of-order
+events converge without applying a second ledger effect.
 
-The concurrency suite requires a real disposable PostgreSQL 16 database through `TEST_DATABASE_URL`.
-The committed real-model report is complete; live Razorpay acceptance still requires Test Mode
-credentials. The repository never turns a synthetic provider fixture into a live-provider claim.
-
-## Security invariants
-
-- Agent signatures bind method, canonical path/query, raw body digest, timestamp, nonce, grant ID
-  and immutable grant digest.
-- A valid proof nonce is consumed even when subsequent business policy rejects the request.
-- Checkout idempotency is an atomic PostgreSQL `INSERT .. ON CONFLICT DO NOTHING RETURNING` with a
-  semantic hash that excludes timestamps and tracing metadata.
-- The cumulative allowance is a conditional update on `spent + held + amount <= cap`.
-- Inventory rows are locked in ascending product-ID order.
-- No Razorpay request occurs inside a database transaction.
-- Worker observations use a versioned reconciliation token. Webhooks lock the same Checkout row.
-- A failed payment attempt does not release an Order-level reservation.
-- Settlement and release mutate only `HELD` reservations, so duplicate events have no second effect.
-- Audit facts are committed with the transitions they explain and form a per-Checkout hash chain.
+The developer console also exposes safe failure exercises for model timeout and proof replay. A model
+failure creates no quote, checkout or reservation; an identical proof nonce is rejected even after an
+API restart.
 
 ## Repository map
 
-- `backend/trustcart/agent_runtime.py` — one bounded Gemini loop and structural tool gating.
-- `backend/trustcart/pop.py` — P-256 request proof and durable replay defense.
-- `backend/trustcart/commerce.py` — quote, idempotency and atomic reservations.
-- `backend/trustcart/payments.py` — Razorpay HMAC inbox and convergent webhook transitions.
-- `backend/trustcart/worker.py` — execution, expiry and two-transaction reconciliation lease.
-- `backend/trustcart/models.py` — PostgreSQL system of record and constraints.
-- `docs/TOOL_DECISIONS.md` — why every selected and omitted tool belongs where it does.
-- `docs/STATE_MACHINE.md` — lifecycle rules and race ownership.
-- `docs/ARCHITECTURE.md` — trust boundaries and end-to-end money flow.
-- `docs/FAILURE_STORY.md` — the lost-provider-response recovery narrative.
-- `docs/DEMO_RUNBOOK.md` — a timed five-minute recording script.
-- `docs/SECURITY_REVIEW.md` — threat model, controls and explicit limitations.
-- `docs/EVIDENCE.md` — reproducible judging evidence and external gates.
-- `docs/SUBMISSION_CHECKLIST.md` — final delivery acceptance checklist.
-- `artifacts/agentauth-five-minute-demo.webm` — reproducible narrated five-minute live demo.
+- `backend/trustcart/agent_runtime.py` — bounded Gemini loop and structural tool gating.
+- `backend/trustcart/pop.py` — canonical ES256 proofs and durable replay protection.
+- `backend/trustcart/commerce.py` — quotes, idempotency and atomic reservations.
+- `backend/trustcart/worker.py` — execution, leases, expiry and reconciliation.
+- `backend/trustcart/payments.py` — optional Razorpay adapter and HMAC webhook inbox.
+- `app/` — buyer interface, consent, Trust Inspector and developer console.
+- `alembic/` — PostgreSQL schema migrations.
+- `tests/` — cryptography, policy, concurrency, payment and agent-structure tests.
+- `evals/` — fixed real-model evaluation harness and report.
+- `docs/` — architecture, state-machine, security and tool-decision records.
 
-## Honest v1 exclusions
+## Scope
 
-Single fictional merchant, INR only, demo login, no device attestation/KMS, no real autonomous UPI,
-no refunds automation, settlement accounting or fulfillment logistics, and no automatic allowance
-restoration after a refund.
+AgentAuth uses fictional catalog and buyer data, supports INR and models a single merchant. Demo login
+is application authentication, not bank-grade identity. The project does not claim NPCI UAP compliance,
+device attestation, biometric authorization or autonomous UPI debit.

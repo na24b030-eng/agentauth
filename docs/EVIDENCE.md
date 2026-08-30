@@ -1,4 +1,4 @@
-# Build and judging evidence
+# Verification evidence
 
 This file is the evidence index, not a substitute for running the repository. It deliberately
 separates locally verified facts from external-provider acceptance gates.
@@ -66,7 +66,7 @@ model output.
 
 ## Evidence map
 
-| Judge criterion | Product evidence | Automated evidence |
+| Quality dimension | Product evidence | Automated evidence |
 |---|---|---|
 | Problem taste | Agent-bound authority closes the last-mile gap between an AI recommendation and a trusted checkout | Architecture and threat review |
 | Build quality | Short transactions, durable queue, state machine, exact-once reservations, typed errors | PostgreSQL, route, crypto, payment and browser suites |
@@ -83,8 +83,8 @@ These cannot be truthfully completed without the account-bound values named belo
 | Authentic Razorpay webhook delivery | Organizer-provided webhook URL + secret | HMAC inbox and convergence remain integration-tested, not claimed live |
 | Public Python/PostgreSQL backend | Local Docker and free HTTPS tunnel running | Site falls back to an honest interactive preview if the demo host is offline |
 
-The judge-facing backend is temporarily exposed from local Docker through free HTTPS tunnels. This
-has no uptime guarantee and is intentionally presented as buildathon infrastructure, not production
+The public demonstration backend is temporarily exposed from local Docker through free HTTPS tunnels.
+This has no uptime guarantee and is intentionally presented as demonstration infrastructure, not production
 hosting. Razorpay configuration health remains false because personal KYC was intentionally avoided.
 
 No source code change can manufacture those account credentials or turn a synthetic event into live

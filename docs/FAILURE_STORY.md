@@ -48,7 +48,7 @@ row lock. If the webhook wins, its version change invalidates the worker lease. 
 capture arrives later, AgentAuth enters `LATE_CAPTURE_INCIDENT` and demands compensation/manual
 review rather than silently fulfilling inventory that was already released.
 
-## Evidence to show a judge
+## Evidence to inspect
 
 - Checkout timeline: `ORDER_CREATING → RECONCILING → PAYMENT_PENDING`.
 - One stable receipt and one Razorpay Order ID.
