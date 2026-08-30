@@ -94,6 +94,27 @@ Passcode: trustcart-demo
 Service health endpoints are available at `http://localhost:8000/health` and
 `http://localhost:8001/health`.
 
+## Deployment
+
+The repository has two independent deployment targets:
+
+- The frontend can be deployed to Vercel from the repository root. `vercel.json` selects the
+  Next.js framework and runs `npm run build:vercel`, which produces Vercel's `.next` output.
+- `merchant-api`, `agent-api`, `worker` and PostgreSQL must run on a container host or local Docker
+  environment. The worker is a durable polling process and is intentionally not implemented as a
+  Vercel Function.
+
+Set these public frontend variables in the frontend host when it should use a remote backend:
+
+```text
+NEXT_PUBLIC_MERCHANT_API_URL=https://merchant-api.example.com
+NEXT_PUBLIC_AGENT_API_URL=https://agent-api.example.com
+```
+
+If they are absent, the interface remains usable in its explicitly labelled preview state. Secrets
+such as the Gemini key, signing keys and database URL belong only in the relevant backend service;
+they must never be configured as `NEXT_PUBLIC_*` values.
+
 ## Configuration
 
 The main environment variables are documented in `.env.example`:
