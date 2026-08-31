@@ -235,6 +235,7 @@ export default function Home() {
   const [agent, setAgent] = useState<AgentIdentity | null>(null);
   const [grant, setGrant] = useState<Grant | null>(null);
   const [view, setView] = useState<View>("commerce");
+  const [policyOpen, setPolicyOpen] = useState(false);
   const mode: Mode = "DELEGATED_DEBIT_SIMULATOR";
   const [draft, setDraft] = useState(
     "Order my usual groceries under ₹900 for delivery tonight",
@@ -256,6 +257,20 @@ export default function Home() {
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (!policyOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPolicyOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [policyOpen]);
 
   useEffect(() => {
     const merchant = merchantBase();
@@ -916,16 +931,116 @@ export default function Home() {
                   <span>
                     <SlidersHorizontal size={13} /> Execution policy
                   </span>
-                  <div className="mode-switch sandbox-mode" aria-label="Execution policy">
-                    <div className="selected">
-                      <Bot size={14} /> AgentAuth Sandbox
-                    </div>
+                  <div className="mode-switch sandbox-mode">
+                    <button
+                      type="button"
+                      className="selected"
+                      aria-haspopup="dialog"
+                      aria-expanded={policyOpen}
+                      onClick={() => setPolicyOpen(true)}
+                    >
+                      <Bot size={14} />
+                      <span>AgentAuth Sandbox</span>
+                      <ChevronRight className="policy-chevron" size={14} />
+                    </button>
                   </div>
                   <small className="mode-help">
                     Deterministic settlement · no real money or personal KYC
                   </small>
                 </div>
               </div>
+              {policyOpen && (
+                <div
+                  className="policy-backdrop"
+                  role="presentation"
+                  onMouseDown={(event) => {
+                    if (event.currentTarget === event.target) {
+                      setPolicyOpen(false);
+                    }
+                  }}
+                >
+                  <section
+                    className="policy-dialog"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="policy-dialog-title"
+                  >
+                    <div className="policy-dialog-head">
+                      <div className="policy-dialog-icon">
+                        <Bot size={19} />
+                      </div>
+                      <div>
+                        <span>Execution policy</span>
+                        <h2 id="policy-dialog-title">AgentAuth Sandbox</h2>
+                      </div>
+                      <button
+                        type="button"
+                        aria-label="Close execution policy"
+                        autoFocus
+                        onClick={() => setPolicyOpen(false)}
+                      >
+                        <X size={17} />
+                      </button>
+                    </div>
+                    <p className="policy-dialog-intro">
+                      A deterministic provider simulator behind the same signed
+                      grant, quote, allowance, inventory and audit controls used
+                      by the optional payment adapter.
+                    </p>
+                    <div className="policy-facts">
+                      <article>
+                        <ShieldCheck size={17} />
+                        <div>
+                          <b>Enforced for real</b>
+                          <p>
+                            Agent proof, grant scope, exact merchant pricing,
+                            PostgreSQL reservations and idempotency.
+                          </p>
+                        </div>
+                      </article>
+                      <article>
+                        <CircleDollarSign size={17} />
+                        <div>
+                          <b>Simulated by design</b>
+                          <p>
+                            Only provider settlement. No bank account, UPI
+                            transfer, personal KYC or real money is involved.
+                          </p>
+                        </div>
+                      </article>
+                      <article>
+                        <ReceiptText size={17} />
+                        <div>
+                          <b>Explicit outcome</b>
+                          <p>
+                            Successful runs end as SIMULATED_SETTLED and are
+                            never presented as Razorpay PAID.
+                          </p>
+                        </div>
+                      </article>
+                    </div>
+                    <div className="policy-dialog-actions">
+                      <button
+                        type="button"
+                        className="secondary-action"
+                        onClick={() => setPolicyOpen(false)}
+                      >
+                        Close
+                      </button>
+                      <button
+                        type="button"
+                        className="primary-action"
+                        onClick={() => {
+                          setPolicyOpen(false);
+                          setView("inspector");
+                        }}
+                      >
+                        Inspect controls <ArrowRight size={15} />
+                      </button>
+                    </div>
+                  </section>
+                </div>
+              )}
               <div className="session-card">
                 <form className="composer" onSubmit={startRun}>
                   <div className="composer-title">

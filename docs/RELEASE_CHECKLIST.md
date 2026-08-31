@@ -6,7 +6,7 @@
 - [x] Docker images build and health checks pass.
 - [x] Alembic upgrades an empty PostgreSQL 16 database.
 - [x] Ruff, pytest, npm lint, npm build and Playwright pass.
-- [ ] GitHub Actions workflow is green.
+- [x] GitHub Actions workflow is green.
 - [x] `.env`, private PEM material and provider secrets are absent from Git.
 
 ## Agent and trust evidence

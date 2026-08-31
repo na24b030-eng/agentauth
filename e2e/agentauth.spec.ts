@@ -77,11 +77,18 @@ test("mobile layout has no horizontal overflow and primary controls remain reach
 
 test("sandbox execution is explicitly disclosed", async ({ page }) => {
   const isLive = await enterWorkspace(page);
-  test.skip(!isLive, "Razorpay configuration is a live-service capability");
-  await expect(page.getByText("AgentAuth Sandbox")).toBeVisible();
+  test.skip(!isLive, "requires the local AgentAuth services");
+  await page.getByRole("button", { name: "AgentAuth Sandbox" }).click();
+  const dialog = page.getByRole("dialog", { name: "AgentAuth Sandbox" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Enforced for real");
+  await expect(dialog).toContainText("Simulated by design");
+  await expect(dialog).toContainText("SIMULATED_SETTLED");
   await expect(
     page.getByText(/Deterministic settlement · no real money or personal KYC/),
   ).toBeVisible();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(dialog).toBeHidden();
 });
 
 test("@live autonomous simulator completes with one visible submitted prompt", async ({
