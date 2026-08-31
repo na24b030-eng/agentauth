@@ -1024,6 +1024,20 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .developer-grid b { color: var(--green); font: 730 11px var(--mono); letter-spacing: .06em; }
 .developer-grid small { color: var(--muted); font-size: 12px; line-height: 1.55; }
 .developer-grid button > svg { color: #888d89; }
+.preview-lab-result {
+  margin-top: 14px;
+  border: 1px solid #b8c2a5;
+  border-radius: 16px;
+  padding: 18px 20px;
+  background: rgb(244 255 222 / 72%);
+  box-shadow: 0 16px 34px rgb(17 20 24 / 7%);
+}
+.preview-lab-result > div { display: flex; align-items: center; gap: 8px; color: var(--green); }
+.preview-lab-result > div span { font: 740 11px var(--mono); letter-spacing: .08em; }
+.preview-lab-result h2 { margin: 10px 0 12px; font: 600 21px/1.2 var(--serif); }
+.preview-lab-result ol { display: grid; gap: 7px; margin: 0; padding-left: 20px; color: #3f4743; }
+.preview-lab-result li { padding-left: 4px; font-size: 13px; line-height: 1.45; }
+.preview-lab-result p { margin: 14px 0 0; color: var(--muted); font-size: 11px; }
 .config-health { margin-top: 14px; border-radius: 12px; padding: 14px 16px; background: #e9f8f0; color: var(--green); font-size: 12px; }
 .config-health.warning { background: #fff3da; color: #8b5c0e; }
 .config-health i { display: inline-block; width: 6px; height: 6px; margin-right: 7px; border-radius: 50%; background: currentColor; }

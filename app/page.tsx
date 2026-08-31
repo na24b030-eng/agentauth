@@ -119,6 +119,13 @@ type ToolEvent = {
   status: string;
   summary: string;
 };
+type PreviewLabAction = "provider" | "nonce" | "webhook" | "timeout" | "reset";
+type PreviewLabResult = {
+  title: string;
+  outcome: string;
+  disclosure: string;
+  steps: string[];
+};
 
 const envMerchant = process.env.NEXT_PUBLIC_MERCHANT_API_URL ?? "";
 const envAgent = process.env.NEXT_PUBLIC_AGENT_API_URL ?? "";
@@ -185,6 +192,58 @@ const toolLabels: Record<string, string> = {
   quote_cart: "Canonical quote",
   place_order: "Authorization + reservation",
   request_purchase_approval: "Purchase approval",
+};
+const previewLabResults: Record<PreviewLabAction, PreviewLabResult> = {
+  provider: {
+    title: "Ambiguous provider response",
+    outcome: "RECONCILIATION TRACE",
+    disclosure: "Illustrative trace only — no provider request was sent.",
+    steps: [
+      "Keep the original checkout and stable receipt",
+      "Observe provider state outside the database transaction",
+      "Apply the result only while the reconciliation lease is current",
+    ],
+  },
+  nonce: {
+    title: "Proof replay rejected",
+    outcome: "409 PROOF_REPLAYED",
+    disclosure: "Illustrative trace only — no signature was submitted.",
+    steps: [
+      "First proof consumes the agent and nonce pair",
+      "Identical proof reaches the unique nonce constraint",
+      "Business execution stops before any reservation",
+    ],
+  },
+  webhook: {
+    title: "Out-of-order events converge",
+    outcome: "ONE LEDGER EFFECT",
+    disclosure: "Illustrative trace only — no webhook was accepted.",
+    steps: [
+      "Persist and deduplicate the provider event ID",
+      "Lock the checkout before applying its transition",
+      "Ignore stale failure after the captured state wins",
+    ],
+  },
+  timeout: {
+    title: "Model timeout contained",
+    outcome: "RECOVERABLE OUTCOME",
+    disclosure: "Illustrative trace only — no model request was made.",
+    steps: [
+      "Stop the bounded agent run at its deadline",
+      "Create no quote, checkout or reservation",
+      "Return a typed outcome that the buyer can safely retry",
+    ],
+  },
+  reset: {
+    title: "Preview state reset",
+    outcome: "FICTIONAL STATE CLEARED",
+    disclosure: "Only browser preview state was cleared.",
+    steps: [
+      "Clear the sample quote and tool trace",
+      "Clear checkout and audit placeholders",
+      "Restore the example purchase brief",
+    ],
+  },
 };
 const promptIdeas = [
   "Restock my breakfast essentials under ₹650",
@@ -253,6 +312,8 @@ export default function Home() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [armedFaults, setArmedFaults] = useState<string[]>([]);
+  const [previewLabResult, setPreviewLabResult] =
+    useState<PreviewLabResult | null>(null);
   const [now, setNow] = useState(0);
   const runGeneration = useRef(0);
 
@@ -768,6 +829,21 @@ export default function Home() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function runPreviewLab(action: PreviewLabAction) {
+    if (action === "reset") {
+      setRun(null);
+      setToolEvents([]);
+      setQuote(null);
+      setCheckout(null);
+      setAudit([]);
+      setSubmittedMessage("");
+      setDraft("Order my usual groceries under ₹900 for delivery tonight");
+    }
+    setError("");
+    setNotice("");
+    setPreviewLabResult(previewLabResults[action]);
   }
 
   if (connection === "checking")
@@ -1381,7 +1457,7 @@ export default function Home() {
                 </div>
               </div>
               <div className="developer-grid">
-                <button disabled>
+                <button onClick={() => runPreviewLab("provider")}>
                   <span className="lab-icon">
                     <Activity size={17} />
                   </span>
@@ -1396,15 +1472,23 @@ export default function Home() {
                   <ChevronRight size={16} />
                 </button>
                 <button
-                  disabled={connection !== "ready" || !grant}
-                  onClick={replayNonce}
+                  disabled={connection === "ready" && !grant}
+                  onClick={() =>
+                    connection === "preview"
+                      ? runPreviewLab("nonce")
+                      : void replayNonce()
+                  }
                 >
                   <span className="lab-icon">
                     <RotateCcw size={17} />
                   </span>
                   <div>
                     <span>Replay PoP nonce</span>
-                    <b>RUN SIGNED REPLAY</b>
+                    <b>
+                      {connection === "preview"
+                        ? "SHOW REJECTION TRACE"
+                        : "RUN SIGNED REPLAY"}
+                    </b>
                     <small>
                       First request succeeds; identical proof returns
                       PROOF_REPLAYED
@@ -1414,18 +1498,26 @@ export default function Home() {
                 </button>
                 <button
                   disabled={
-                    connection !== "ready" ||
-                    !checkout?.razorpay_order_id ||
-                    checkout.payment_mode !== "RAZORPAY_PAYMENT_LAB"
+                    connection === "ready" &&
+                    (!checkout?.razorpay_order_id ||
+                      checkout.payment_mode !== "RAZORPAY_PAYMENT_LAB")
                   }
-                  onClick={runWebhookFixture}
+                  onClick={() =>
+                    connection === "preview"
+                      ? runPreviewLab("webhook")
+                      : void runWebhookFixture()
+                  }
                 >
                   <span className="lab-icon">
                     <ReceiptText size={17} />
                   </span>
                   <div>
                     <span>Out-of-order webhook</span>
-                    <b>RUN DISCLOSED FIXTURE</b>
+                    <b>
+                      {connection === "preview"
+                        ? "SHOW CONVERGENCE TRACE"
+                        : "RUN DISCLOSED FIXTURE"}
+                    </b>
                     <small>
                       Capture, stale failure and duplicate delivery produce one
                       ledger effect
@@ -1434,8 +1526,11 @@ export default function Home() {
                   <ChevronRight size={16} />
                 </button>
                 <button
-                  disabled={connection !== "ready"}
-                  onClick={() => armFault("FORCE_MODEL_TIMEOUT")}
+                  onClick={() =>
+                    connection === "preview"
+                      ? runPreviewLab("timeout")
+                      : armFault("FORCE_MODEL_TIMEOUT")
+                  }
                 >
                   <span className="lab-icon">
                     <Clock3 size={17} />
@@ -1445,7 +1540,9 @@ export default function Home() {
                     <b>
                       {armedFaults.includes("FORCE_MODEL_TIMEOUT")
                         ? "ARMED ONCE"
-                        : "ARM AGENT"}
+                        : connection === "preview"
+                          ? "SHOW TYPED OUTCOME"
+                          : "ARM AGENT"}
                     </b>
                     <small>
                       The next run returns a typed recoverable outcome
@@ -1454,15 +1551,23 @@ export default function Home() {
                   <ChevronRight size={16} />
                 </button>
                 <button
-                  disabled={connection !== "ready" || busy}
-                  onClick={resetDemo}
+                  disabled={busy}
+                  onClick={() =>
+                    connection === "preview"
+                      ? runPreviewLab("reset")
+                      : void resetDemo()
+                  }
                 >
                   <span className="lab-icon">
                     <RotateCcw size={17} />
                   </span>
                   <div>
                     <span>Reset local demo</span>
-                    <b>RESET FICTIONAL STATE</b>
+                    <b>
+                      {connection === "preview"
+                        ? "RESET PREVIEW STATE"
+                        : "RESET FICTIONAL STATE"}
+                    </b>
                     <small>
                       Available only when Razorpay credentials are absent
                     </small>
@@ -1470,6 +1575,21 @@ export default function Home() {
                   <ChevronRight size={16} />
                 </button>
               </div>
+              {previewLabResult ? (
+                <section className="preview-lab-result" aria-live="polite">
+                  <div>
+                    <BadgeCheck size={18} />
+                    <span>{previewLabResult.outcome}</span>
+                  </div>
+                  <h2>{previewLabResult.title}</h2>
+                  <ol>
+                    {previewLabResult.steps.map((step) => (
+                      <li key={step}>{step}</li>
+                    ))}
+                  </ol>
+                  <p>{previewLabResult.disclosure}</p>
+                </section>
+              ) : null}
               <div
                 className={`config-health ${connection === "preview" ? "warning" : ""}`}
               >

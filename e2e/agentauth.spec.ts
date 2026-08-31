@@ -69,6 +69,51 @@ test("falls back to the labelled preview when authorization services are unavail
   await expect(page.getByText(/labelled preview fixture/i)).toBeVisible();
 });
 
+test("hosted preview recovery controls open honest interactive traces", async ({
+  page,
+}) => {
+  await page.route("http://localhost:8000/health", (route) => route.abort());
+  await page.route("http://localhost:8001/health", (route) => route.abort());
+  await page.goto("/");
+  await expect(page.getByText("Preview fixture", { exact: true })).toBeVisible({
+    timeout: 10_000,
+  });
+  await page.getByRole("button", { name: "Developer", exact: true }).click();
+
+  const provider = page.getByRole("button", {
+    name: /Provider-response recovery/,
+  });
+  await expect(provider).toBeEnabled();
+  await provider.click();
+  await expect(page.getByText("RECONCILIATION TRACE")).toBeVisible();
+
+  const replay = page.getByRole("button", { name: /Replay PoP nonce/ });
+  await expect(replay).toBeEnabled();
+  await replay.click();
+  await expect(page.getByText("409 PROOF_REPLAYED")).toBeVisible();
+  await expect(page.getByText(/no signature was submitted/i)).toBeVisible();
+
+  const webhook = page.getByRole("button", { name: /Out-of-order webhook/ });
+  await expect(webhook).toBeEnabled();
+  await webhook.click();
+  await expect(
+    page.getByText("ONE LEDGER EFFECT", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText(/no webhook was accepted/i)).toBeVisible();
+
+  const timeout = page.getByRole("button", { name: /Model timeout/ });
+  await expect(timeout).toBeEnabled();
+  await timeout.click();
+  await expect(
+    page.getByText("RECOVERABLE OUTCOME", { exact: true }),
+  ).toBeVisible();
+
+  const reset = page.getByRole("button", { name: /Reset local demo/ });
+  await expect(reset).toBeEnabled();
+  await reset.click();
+  await expect(page.getByText("FICTIONAL STATE CLEARED")).toBeVisible();
+});
+
 test("mobile layout has no horizontal overflow and primary controls remain reachable", async ({
   page,
 }) => {
