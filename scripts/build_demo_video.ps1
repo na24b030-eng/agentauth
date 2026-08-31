@@ -80,4 +80,8 @@ if ($LASTEXITCODE -ne 0) { throw "The free narration generator failed" }
     -c:a aac -b:a 160k -ar 48000 -movflags +faststart -t 300 $outputFile
 if ($LASTEXITCODE -ne 0) { throw "FFmpeg could not assemble the narrated demo" }
 
+$subtitleScript = Join-Path $projectRoot "scripts/add_demo_subtitles.ps1"
+& powershell -ExecutionPolicy Bypass -File $subtitleScript -VideoPath $OutputPath
+if ($LASTEXITCODE -ne 0) { throw "The narrated demo was created, but subtitle rendering failed" }
+
 Write-Output $outputFile

@@ -168,8 +168,10 @@ tool count, latency and token use in `evals/report.json`.
 
 The published walkthrough can be regenerated from the real browser tour with `npm run demo:record`.
 That command uses Playwright at 1280×720, the free `edge-tts` package through `uv`, and FFmpeg to
-produce an exactly five-minute H.264/AAC MP4 with normalized narration. It does not require a paid
-text-to-speech API key.
+produce an exactly five-minute H.264/AAC MP4 with normalized narration and burned-in captions. The
+final 1280×756 frame preserves the complete 1280×720 recording and reserves a 36-pixel bottom strip
+for small subtitles, so captions do not cover the interface. It does not require a paid text-to-speech
+API key. Run `npm run demo:subtitles` only when reapplying captions to a clean narrated recording.
 
 ## Failure handling
 

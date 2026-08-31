@@ -17,6 +17,14 @@ if (-not (Test-Path -LiteralPath $videoFile)) { throw "Demo video not found: $vi
 if (-not (Test-Path -LiteralPath $ffmpeg)) { throw "FFmpeg is missing. Run: npm install" }
 if (-not $uv) { throw "uv is required to generate subtitle timings" }
 
+$previousErrorPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+$videoMetadata = (& $ffmpeg -hide_banner -i $videoFile 2>&1 | ForEach-Object { "$_" }) -join "`n"
+$ErrorActionPreference = $previousErrorPreference
+if ($videoMetadata -notmatch "Video:.*1280x720") {
+    throw "Subtitle input must be the clean 1280x720 recording. Refusing to caption an already padded or unexpected video."
+}
+
 & $uv.Source run --with edge-tts edge-tts `
     --voice "en-IN-NeerjaNeural" `
     --rate "+0%" `

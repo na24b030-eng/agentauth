@@ -14,7 +14,8 @@
     "lint": "eslint app e2e next.config.ts playwright.config.ts",
     "test:e2e": "playwright test",
     "test:e2e:live": "cross-env E2E_LIVE_AGENT=1 playwright test --grep @live",
-    "demo:record": "powershell -ExecutionPolicy Bypass -File scripts/build_demo_video.ps1"
+    "demo:record": "powershell -ExecutionPolicy Bypass -File scripts/build_demo_video.ps1",
+    "demo:subtitles": "powershell -ExecutionPolicy Bypass -File scripts/add_demo_subtitles.ps1"
   },
   "dependencies": {
     "lucide-react": "^1.37.0",

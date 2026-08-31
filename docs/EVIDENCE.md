@@ -16,7 +16,8 @@ separates locally verified facts from external-provider acceptance gates.
 - Lost-response, model-timeout, nonce-replay and out-of-order-webhook fault controls.
 - Trust Inspector, consent UI, countdown, payment timeline and configuration health.
 - CI for Python/PostgreSQL and Node/browser checks.
-- Narrated five-minute browser demonstration generated from a passing live Playwright tour.
+- Narrated five-minute browser demonstration generated from a passing live Playwright tour, with
+  short burned-in subtitles placed below the full recording in a dedicated caption-safe strip.
 
 ## Reproducible commands
 

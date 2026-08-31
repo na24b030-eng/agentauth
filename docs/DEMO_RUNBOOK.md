@@ -37,6 +37,8 @@ npm run test:e2e
   when a remote participant must operate the live APIs, and verify both public health endpoints before sharing.
 - Keep the exact failure injection label visible so synthetic fault control is not mistaken for a
   provider event.
+- Confirm the published file is exactly five minutes and retains the full 1280×720 tour above the
+  36-pixel subtitle-safe strip; captions must not overlap the recorded interface.
 
 ## Optional provider-adapter disclosure
 
