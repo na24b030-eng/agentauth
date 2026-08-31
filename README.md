@@ -186,6 +186,7 @@ API restart.
 - `tests/` — cryptography, policy, concurrency, payment and agent-structure tests.
 - `evals/` — fixed real-model evaluation harness and report.
 - `docs/` — architecture, state-machine, security and tool-decision records.
+- `docs/SUBMISSION.md` — concise product, engineering and verification overview.
 
 ## Scope
 

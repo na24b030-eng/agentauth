@@ -65,6 +65,9 @@ test('record the five-minute AgentAuth product walkthrough', async ({ page }) =>
 
   await page.getByRole('button', { name: 'Trust Inspector' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Trust Inspector', exact: true })).toBeVisible();
+  await expect(page.getByText('Persisted checkout evidence')).toBeVisible();
+  await expect(page.getByText('GRANT_AND_INVENTORY_RESERVED')).toBeVisible();
+  await expect(page.getByText('SIMULATED_SETTLED', { exact: true })).toBeVisible();
   await page.waitForTimeout(65_000);
 
   await page.getByRole('button', { name: 'Developer' }).click();

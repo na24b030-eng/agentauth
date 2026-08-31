@@ -138,6 +138,38 @@ test("signed-evidence action opens an honest inspector and remains actionable", 
   ).toBeVisible();
 });
 
+test("secondary controls expose a concrete action or prerequisite", async ({
+  page,
+}) => {
+  await enterWorkspace(page);
+
+  await page
+    .getByRole("button", {
+      name: "Find a high-protein basket for tomorrow morning",
+    })
+    .click();
+  await expect(
+    page.getByRole("textbox", { name: "Message your commerce agent" }),
+  ).toHaveValue("Find a high-protein basket for tomorrow morning");
+
+  await page.getByRole("button", { name: "Delegations", exact: true }).click();
+  await expect(page.getByText("Per order", { exact: true })).toBeVisible();
+  await expect(page.getByText("Cumulative", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Developer", exact: true }).click();
+  const recoveryControls = [
+    /Provider-response recovery/,
+    /Replay PoP nonce/,
+    /Out-of-order webhook/,
+    /Model timeout/,
+    /Reset local demo/,
+  ];
+  for (const name of recoveryControls) {
+    await expect(page.getByRole("button", { name })).toBeVisible();
+  }
+  await expect(page.locator(".developer-grid small")).toHaveCount(5);
+});
+
 test("@live autonomous simulator completes with one visible submitted prompt", async ({
   page,
 }) => {

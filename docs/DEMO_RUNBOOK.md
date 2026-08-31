@@ -33,6 +33,8 @@ npm run test:e2e
 - Never reveal `.env`, terminal secrets or Razorpay key values.
 - Do not call a Razorpay Order or `payment.failed` a successful payment.
 - Reset seeded data before each take.
+- For a screen-shared demonstration, use the local interface directly. Start temporary HTTPS tunnels only
+  when a remote participant must operate the live APIs, and verify both public health endpoints before sharing.
 - Keep the exact failure injection label visible so synthetic fault control is not mistaken for a
   provider event.
 

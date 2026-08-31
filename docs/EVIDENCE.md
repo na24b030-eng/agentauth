@@ -81,11 +81,12 @@ These cannot be truthfully completed without the account-bound values named belo
 |---|---|---|
 | Optional live Razorpay Test Order and capture | Organizer-provided Test Mode key ID + secret | Public Site exposes only the clearly labelled AgentAuth Sandbox |
 | Authentic Razorpay webhook delivery | Organizer-provided webhook URL + secret | HMAC inbox and convergence remain integration-tested, not claimed live |
-| Public Python/PostgreSQL backend | Local Docker and free HTTPS tunnel running | Site falls back to an honest interactive preview if the demo host is offline |
+| Public Python/PostgreSQL backend | Local Docker plus temporary HTTPS tunnels started for a live session | Site remains an honest interactive preview when no demo tunnel is active |
 
-The public demonstration backend is temporarily exposed from local Docker through free HTTPS tunnels.
-This has no uptime guarantee and is intentionally presented as demonstration infrastructure, not production
-hosting. Razorpay configuration health remains false because personal KYC was intentionally avoided.
+The backend can be exposed from local Docker through temporary free HTTPS tunnels for a scheduled live
+session. No always-on tunnel or uptime guarantee is claimed. In its normal public state, the hosted frontend
+is explicitly labelled as a preview; the complete working system runs locally. Razorpay configuration health
+remains false because personal KYC was intentionally avoided.
 
 No source code change can manufacture those account credentials or turn a synthetic event into live
 provider evidence. Once credentials are available, the same adapter, worker and UI paths are used;

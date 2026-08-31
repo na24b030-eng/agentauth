@@ -32,7 +32,7 @@
 ## Delivery
 
 - [x] Public hosted Site matches the tested commit.
-- [x] Zero-cost HTTPS tunnels expose the local demo APIs while Docker is running.
+- [ ] Start zero-cost HTTPS tunnels immediately before a remote live demonstration, only if remote API access is required.
 - [x] Five-minute video follows `DEMO_RUNBOOK.md`.
 - [x] Failure narrative follows `FAILURE_STORY.md`.
 - [x] Final README states every simplification and external gate honestly.
