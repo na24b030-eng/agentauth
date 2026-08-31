@@ -57,6 +57,18 @@ test("honestly identifies live or preview mode and exposes one composer", async 
   }
 });
 
+test("falls back to the labelled preview when authorization services are unavailable", async ({
+  page,
+}) => {
+  await page.route("http://localhost:8000/health", (route) => route.abort());
+  await page.route("http://localhost:8001/health", (route) => route.abort());
+  await page.goto("/");
+  await expect(page.getByText("Preview fixture", { exact: true })).toBeVisible({
+    timeout: 10_000,
+  });
+  await expect(page.getByText(/labelled preview fixture/i)).toBeVisible();
+});
+
 test("mobile layout has no horizontal overflow and primary controls remain reachable", async ({
   page,
 }) => {

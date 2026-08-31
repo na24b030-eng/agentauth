@@ -284,13 +284,23 @@ export default function Home() {
       }, 0);
       return () => window.clearTimeout(previewTimer);
     }
-    Promise.all([fetch(`${merchant}/health`), fetch(`${agentApi}/health`)])
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 2_500);
+    Promise.all([
+      fetch(`${merchant}/health`, { signal: controller.signal }),
+      fetch(`${agentApi}/health`, { signal: controller.signal }),
+    ])
       .then((responses) =>
         setConnection(
           responses.every((response) => response.ok) ? "login" : "preview",
         ),
       )
-      .catch(() => setConnection("preview"));
+      .catch(() => setConnection("preview"))
+      .finally(() => window.clearTimeout(timeout));
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
   }, []);
 
   const token = sessionUser?.access_token;
