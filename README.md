@@ -166,6 +166,11 @@ The fixed real-model evaluation compares low and medium Gemini reasoning across 
 configuration. The committed report records completion, constraint violations, clarification quality,
 tool count, latency and token use in `evals/report.json`.
 
+The published walkthrough can be regenerated from the real browser tour with `npm run demo:record`.
+That command uses Playwright at 1280×720, the free `edge-tts` package through `uv`, and FFmpeg to
+produce an exactly five-minute H.264/AAC MP4 with normalized narration. It does not require a paid
+text-to-speech API key.
+
 ## Failure handling
 
 AgentAuth treats ambiguous external writes as reconciliation problems rather than retry opportunities.

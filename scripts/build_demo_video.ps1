@@ -7,11 +7,15 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 $outputFile = Join-Path $projectRoot $OutputPath
 $artifactDirectory = Split-Path -Parent $outputFile
 $narrationPath = Join-Path $projectRoot "docs/DEMO_NARRATION.txt"
-$audioPath = Join-Path $artifactDirectory "agentauth-demo-narration.wav"
+$audioPath = Join-Path $artifactDirectory "agentauth-demo-narration.mp3"
 $ffmpegModule = Join-Path $projectRoot "node_modules/ffmpeg-static/ffmpeg.exe"
 $ffmpeg = if (Test-Path -LiteralPath $ffmpegModule) { $ffmpegModule } else { $null }
 if (-not $ffmpeg) {
     throw "Full FFmpeg is missing. Run: npm install"
+}
+$uv = Get-Command "uv" -ErrorAction SilentlyContinue
+if (-not $uv) {
+    throw "uv is required to run the free edge-tts narration generator. Install uv and retry."
 }
 
 New-Item -ItemType Directory -Path $artifactDirectory -Force | Out-Null
@@ -63,24 +67,17 @@ $screenVideo = Get-ChildItem (Join-Path $projectRoot "test-results") -Recurse -F
     Select-Object -First 1 -ExpandProperty FullName
 if (-not $screenVideo) { throw "Playwright did not produce a video" }
 
-Add-Type -AssemblyName System.Speech
-$speaker = New-Object System.Speech.Synthesis.SpeechSynthesizer
-try {
-    $voiceNames = @($speaker.GetInstalledVoices() | ForEach-Object { $_.VoiceInfo.Name })
-    $preferredVoice = @("Microsoft Heera", "Microsoft Ravi", "Microsoft Hazel Desktop", "Microsoft Zira Desktop") |
-        Where-Object { $voiceNames -contains $_ } |
-        Select-Object -First 1
-    if ($preferredVoice) { $speaker.SelectVoice($preferredVoice) }
-    $speaker.Rate = 1
-    $speaker.SetOutputToWaveFile($audioPath)
-    $speaker.Speak((Get-Content $narrationPath -Raw))
-} finally {
-    $speaker.Dispose()
-}
+& $uv.Source run --with edge-tts edge-tts `
+    --voice "en-IN-NeerjaNeural" `
+    --rate "+0%" `
+    --file $narrationPath `
+    --write-media $audioPath
+if ($LASTEXITCODE -ne 0) { throw "The free narration generator failed" }
 
 & $ffmpeg -y -i $screenVideo -i $audioPath -map 0:v:0 -map 1:a:0 `
-    -c:v libx264 -preset medium -crf 22 -pix_fmt yuv420p `
-    -filter:a "atempo=1.75" -c:a aac -b:a 128k -movflags +faststart -t 300 $outputFile
+    -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p `
+    -filter:a "loudnorm=I=-16:TP=-1.5:LRA=11,apad" `
+    -c:a aac -b:a 160k -ar 48000 -movflags +faststart -t 300 $outputFile
 if ($LASTEXITCODE -ne 0) { throw "FFmpeg could not assemble the narrated demo" }
 
 Write-Output $outputFile

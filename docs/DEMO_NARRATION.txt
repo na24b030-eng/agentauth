@@ -1,86 +1,21 @@
-Welcome to AgentAuth, an authorization and checkout gateway for AI buyers, built for Razorpay's
-agentic commerce track. The idea is simple: an AI may understand what a buyer wants, but understanding
-is not authority. AgentAuth lets a user issue a bounded mandate to one registered software agent,
-then independently verifies every request, price, reservation, and payment transition.
+AgentAuth is a delegated-commerce control plane for AI buyers. The core idea is simple: an AI may understand what a user wants, but understanding is not authority. AgentAuth lets one registered agent act only inside a user-approved mandate, while deterministic services control prices, inventory, spending and payment state.
 
-This is a live local test environment. The hosted site is deliberately labelled as a preview until
-public Python and PostgreSQL services are connected. The Gemini model and the P-256 agent private key
-exist only in Agent API. Razorpay credentials, when configured, exist only in Merchant API and the
-worker. None of those secrets are sent to this browser or stored in the commerce database.
+This is the live local test environment. The login represents application consent, not bank identity or biometrics. Secrets stay outside the browser: Gemini and the agent private key live in the Agent API, while the Merchant API owns authorization and commerce facts.
 
-Before the demonstration, the developer reset clears only fictional local runs, grants, reservations,
-and inventory changes. It is disabled in production and is also disabled when Razorpay credentials are
-active, because deleting local state must never orphan a real provider Order. This is one example of a
-failure tool being useful without becoming a shortcut around the real architecture.
+The Recovery Lab first resets only fictional demo state. Now the user reviews the delegation. It binds one agent fingerprint to this merchant, approved categories, a per-order limit, a cumulative limit, an expiry and automatic-execution permission. Changing those limits requires a new grant, and revocation blocks future purchases.
 
-Here is the consent boundary. The user approves one registered agent fingerprint, one fictional
-merchant, a fixed list of product categories, a per-order cap, a cumulative cap, an expiry time, and
-whether automatic execution is allowed. Approved scope is represented by a canonical immutable digest.
-Changing a category or cap requires a new grant. Revocation blocks new reservations but does not erase
-an already-started payment lifecycle. The login is clearly disclosed as application demo identity, not
-a bank identity, biometric, or device attestation.
+The buyer asks: order my usual groceries under nine hundred rupees for delivery tonight. This is one Gemini commerce agent, not a chain of agents. It can read factual purchase history, search the catalog, check delivery and request a quote. Checkout remains structurally unavailable until a valid quote exists.
 
-Now the buyer says: order my usual groceries under nine hundred rupees for delivery tonight. There is
-one natural-language interaction and one bounded Gemini commerce agent. The label under the composer
-does not mean five prompts or five agents. It means four discovery capabilities, while checkout is
-structurally hidden until trusted state contains a valid canonical quote.
+The model chooses products and quantities, but it never supplies identity, prices, totals, the grant, the quote identifier or the idempotency key. The merchant calculates the exact quote from current catalog, delivery and inventory data. It then revalidates every rule independently of the model.
 
-The agent loads factual purchase history for the authenticated buyer. Because the buyer explicitly
-said usual groceries, that history may also supply the saved delivery postcode. A postcode invented by
-the model is rejected. A new-address request cannot reuse the saved postcode. Next, deterministic
-delivery tools return exact slots, fees, and cutoffs. A quote cannot be created unless its delivery
-option was returned for one of those trusted postcodes.
+When the order is placed, PostgreSQL performs one short atomic reservation: it enforces the cumulative allowance, locks inventory in a consistent order, consumes the quote and writes the audit event. The simulator then settles through the same grant, quote, reservation and audit pipeline. It is permanently labelled simulated and moves no real money.
 
-The model may select SKUs and quantities. It never supplies the buyer ID, agent ID, grant ID, quote ID,
-price, total, or idempotency key to the execution tool. The merchant service loads current prices and
-inventory and creates the canonical, two-minute Quote. The runtime then exposes place order with an
-empty argument schema. Even if the model or its prompt is compromised, Merchant API revalidates the
-Quote binding, grant digest, category scope, caps, expiry, and inventory.
+The Trust Inspector shows why this is more than an AI wrapper. Every protected call carries an ES256 proof over the method, path, body digest, timestamp, nonce, grant and immutable grant digest. PostgreSQL rejects a repeated nonce even after an API restart. The inspector also separates the model's tool trace from the deterministic money facts and shows the hash-linked audit sequence.
 
-Checkout reservation is one short PostgreSQL transaction. It atomically inserts or resolves the
-semantic idempotency key, conditionally increments the grant's held allowance, locks inventory in
-sorted product-ID order, creates reservation records, consumes the Quote, and writes the audit fact.
-No external network call happens while database locks are held. The three-second cancellation window
-is therefore a real reserved state, not a fake countdown.
+The Recovery Lab makes failure behavior visible. Here, the same signed request is sent twice: the first succeeds and the replay is rejected. Other controls cover model timeout, duplicate or out-of-order webhooks and an ambiguous provider response.
 
-This run ends in simulated settled. The words simulated and test environment remain visible. No UPI
-transfer is claimed. The simulator uses the same grant, quote, allowance, inventory, cancellation, and
-audit pipeline as the provider path, then deterministically consumes the reservations once. Razorpay
-Payment Lab is a separate capability. With Test Mode credentials it creates a real Order, opens Standard
-Checkout, and only moves to paid after a capture or order-paid observation. Merely creating an Order is
-never displayed as payment success.
+The main failure story is a lost payment-provider Order response. AgentAuth does not blindly retry. It uses one stable receipt, observes provider state outside the database transaction, and applies the result only if the reconciliation lease is still current. Webhooks and the worker lock the same checkout, preventing stale observations from overwriting newer truth.
 
-The Trust Inspector separates the probabilistic proposal from deterministic money facts. The signed
-canonical request includes protocol version, method, canonical path and query, raw-body digest,
-timestamp, nonce, grant ID, and immutable grant digest. ES256 proves possession of the registered agent
-key. PostgreSQL enforces nonce uniqueness, so a replay remains rejected after an API restart. Nonces are
-short-lived and pruned in bounded batches from an unlogged table because they have no value outside the
-five-minute proof window.
+The optional Razorpay adapter remains honest: creating an Order is never shown as paid, and a failed attempt does not release reservations while a later capture is still possible. Without account-bound credentials, this demonstration uses the autonomous sandbox.
 
-Audit events are committed in the same transaction as the transition they explain. Each Checkout has a
-monotonic sequence, reason code, human explanation, monetary effect, previous hash, and current hash.
-This is presented as tamper-evident engineering evidence, not as regulatory immutable storage.
-
-The Recovery Lab makes failure handling visible. The nonce replay control sends the exact same signed
-request twice: the first request succeeds, while the second is rejected as proof replayed. The model-timeout
-control returns a typed recoverable outcome. The webhook fixture is clearly disclosed as synthetic and
-requires a real Test Mode Order before it can test captured, stale-failed, and duplicate delivery.
-
-The main two-AM failure story is a lost Razorpay Order-create response. Razorpay may have created the
-Order even though the worker lost the network response, so blindly retrying could create a duplicate
-external side effect. AgentAuth uses one stable receipt per Checkout. A worker claim transaction writes
-a random reconciliation token and version, then calls Razorpay outside the transaction and searches by
-receipt. The apply transaction locks the Checkout and accepts the observation only if the lease is still
-current. The result is one provider Order and one allowance and inventory effect.
-
-Webhooks and the reconciliation worker lock the same Checkout row. A failed payment attempt does not
-release the Order reservation because Razorpay documents that capture may arrive later. Expiry occurs
-only after provider-confirmed unpaid state and a grace period. If capture appears after resources were
-released, AgentAuth enters a visible late-capture incident instead of silently fulfilling oversold
-inventory.
-
-This final screen returns to the bounded delegation and the completed simulator result. The model was
-used where language and comparison need judgment. Cryptography was used where caller authenticity needs
-proof. PostgreSQL was used where strict shared counters, idempotency, and durable state need atomicity.
-Razorpay webhooks and reconciliation own provider truth. That separation is the product: AI can act, but
-only inside authority that is explicit, explainable, bounded, and recoverable.
+That separation is the product. Gemini handles language and product judgment. Cryptography proves the caller. PostgreSQL enforces shared limits and durable state. The merchant and recovery worker control money-relevant outcomes. AI can act, but only inside authority that is explicit, bounded, explainable and recoverable.

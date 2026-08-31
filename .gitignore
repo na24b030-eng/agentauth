@@ -17,6 +17,7 @@ __pycache__/
 /test-results/
 /evals/*.checkpoint
 /artifacts/*.wav
+/artifacts/*.mp3
 /artifacts/*.log
 /artifacts/*.png
 

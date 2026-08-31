@@ -33,6 +33,6 @@
 
 - [x] Public GitHub Pages frontend matches the tested commit.
 - [ ] Start zero-cost HTTPS tunnels immediately before a remote live demonstration, only if remote API access is required.
-- [x] Five-minute H.264/AAC MP4 follows `DEMO_RUNBOOK.md` and displays the seeded user as Diksha.
+- [x] Five-minute 1280×720 H.264/AAC MP4 follows `DEMO_RUNBOOK.md` and displays the seeded user as Diksha.
 - [x] Failure narrative follows `FAILURE_STORY.md`.
 - [x] Final README states every simplification and external gate honestly.
