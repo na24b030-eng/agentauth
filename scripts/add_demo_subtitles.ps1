@@ -30,10 +30,12 @@ if ($LASTEXITCODE -ne 0) { throw "Subtitle shortening failed" }
 
 Push-Location $projectRoot
 try {
-    $subtitleStyle = "FontName=Segoe UI,FontSize=16,PrimaryColour=&H00FFFFFF,BackColour=&H65000000,BorderStyle=3,Outline=5,Shadow=0,MarginV=26,Alignment=2"
+    # Preserve the entire 1280x720 recording and place captions in a slim safe strip
+    # below it, rather than covering any product UI.
+    $subtitleStyle = "FontName=Segoe UI,FontSize=10,PrimaryColour=&H00FFFFFF,BackColour=&H80000000,BorderStyle=3,Outline=2,Shadow=0,MarginV=6,Alignment=2"
     & $ffmpeg -y -i $videoFile `
         -map 0:v:0 -map 0:a:0 `
-        -vf "subtitles=artifacts/agentauth-demo-subtitles.vtt:force_style='$subtitleStyle'" `
+        -vf "pad=iw:ih+36:0:0:color=0x111418,subtitles=artifacts/agentauth-demo-subtitles.vtt:force_style='$subtitleStyle'" `
         -c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p `
         -c:a copy -movflags +faststart $temporaryVideo
     if ($LASTEXITCODE -ne 0) { throw "FFmpeg could not burn the subtitles" }

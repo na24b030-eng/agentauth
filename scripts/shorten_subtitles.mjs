@@ -33,7 +33,7 @@ const splitWords = (text) => {
   let current = [];
   for (const word of words) {
     const candidate = [...current, word].join(" ");
-    if (current.length >= 6 || candidate.length > 42) {
+    if (current.length >= 5 || candidate.length > 34) {
       chunks.push(current.join(" "));
       current = [word];
     } else {
@@ -46,7 +46,7 @@ const splitWords = (text) => {
     const lastWord = chunks.at(-1);
     const movedWord = previousWords.at(-1);
     const balancedTail = `${movedWord} ${lastWord}`;
-    if (previousWords.length > 1 && balancedTail.length <= 42) {
+    if (previousWords.length > 1 && balancedTail.length <= 34) {
       chunks[chunks.length - 2] = previousWords.slice(0, -1).join(" ");
       chunks[chunks.length - 1] = balancedTail;
     }
