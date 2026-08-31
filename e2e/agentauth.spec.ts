@@ -75,6 +75,40 @@ test("mobile layout has no horizontal overflow and primary controls remain reach
   ).toBeVisible();
 });
 
+test("login hero is edge-to-edge at tablet width and links to the MP4 walkthrough", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 813, height: 731 });
+  await page.goto("/");
+  const login = page.getByRole("button", { name: "Enter test environment" });
+  const loginAvailable = await login
+    .waitFor({ state: "visible", timeout: 5_000 })
+    .then(() => true)
+    .catch(() => false);
+  test.skip(!loginAvailable, "requires the local AgentAuth services");
+
+  const hero = page.locator(".login-shell");
+  const geometry = await hero.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const styles = window.getComputedStyle(element);
+    return {
+      left: rect.left,
+      right: window.innerWidth - rect.right,
+      radius: styles.borderRadius,
+      topBorder: styles.borderTopWidth,
+      bottomBorder: styles.borderBottomWidth,
+    };
+  });
+  expect(Math.abs(geometry.left)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.right)).toBeLessThanOrEqual(1);
+  expect(geometry.radius).toBe("0px");
+  expect(geometry.topBorder).toBe("0px");
+  expect(geometry.bottomBorder).toBe("1px");
+  await expect(
+    page.getByRole("link", { name: "Watch the five-minute walkthrough" }),
+  ).toHaveAttribute("href", /agentauth-five-minute-demo\.mp4$/);
+});
+
 test("sandbox execution is explicitly disclosed", async ({ page }) => {
   const isLive = await enterWorkspace(page);
   test.skip(!isLive, "requires the local AgentAuth services");

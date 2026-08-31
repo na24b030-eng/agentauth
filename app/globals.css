@@ -175,6 +175,18 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 }
 .login-card > button:hover:not(:disabled),
 .consent-card > button:not(.danger-button):hover:not(:disabled) { transform: translateY(-1px); background: #292f35; }
+.login-demo-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 14px;
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 750;
+  text-decoration: none;
+}
+.login-demo-link:hover { text-decoration: underline; text-underline-offset: 3px; }
 .login-card > p { margin: 16px 0 0; color: #7e8581; font-size: 11px; line-height: 1.5; text-align: center; }
 .error-banner {
   margin-top: 14px;
@@ -1110,9 +1122,16 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   .workspace { display: block; }
   .trust-panel { position: relative; top: auto; margin-top: 22px; }
   .page-heading { padding-top: 22px; }
-  .login-screen { display: block; padding: 24px; }
-  .login-shell { min-height: 540px; margin-bottom: 34px; border-radius: 22px; padding: 38px; }
-  .login-card { margin: 0 auto 30px; }
+  .login-screen { display: block; padding: 0; }
+  .login-shell {
+    width: 100%;
+    min-height: 540px;
+    margin: 0;
+    border-bottom: 1px solid rgb(201 255 99 / 28%);
+    border-radius: 0;
+    padding: 38px;
+  }
+  .login-card { margin: 34px auto; }
 }
 
 @media (max-width: 620px) {
@@ -1166,8 +1185,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   .consent-card dl, .developer-grid { grid-template-columns: 1fr; }
   .feature-view .page-heading { padding-top: 14px; }
   .feature-view .page-heading h1 { font-size: 34px; }
-  .login-screen { padding: 14px; }
-  .login-shell { min-height: 500px; padding: 26px; }
+  .login-screen { padding: 0; }
+  .login-shell { min-height: 500px; padding: 26px 20px; }
   .login-shell h1 { font-size: 38px; }
   .login-shell p { font-size: 14px; }
   .login-shell li { font-size: 13px; }

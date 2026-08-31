@@ -122,6 +122,8 @@ type ToolEvent = {
 
 const envMerchant = process.env.NEXT_PUBLIC_MERCHANT_API_URL ?? "";
 const envAgent = process.env.NEXT_PUBLIC_AGENT_API_URL ?? "";
+const demoVideoUrl =
+  "https://na24b030-eng.github.io/agentauth/downloads/agentauth-five-minute-demo.mp4";
 const isLocalBrowser = () =>
   typeof window !== "undefined" &&
   ["localhost", "127.0.0.1"].includes(window.location.hostname);
@@ -829,6 +831,15 @@ export default function Home() {
             {busy ? "Verifying…" : "Enter test environment"}
             <ArrowRight size={15} />
           </button>
+          <a
+            className="login-demo-link"
+            href={demoVideoUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Watch the five-minute walkthrough
+            <ArrowUpRight size={14} />
+          </a>
           <p>This is not bank, biometric, or device identity.</p>
         </form>
       </main>

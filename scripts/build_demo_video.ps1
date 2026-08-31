@@ -1,5 +1,5 @@
 param(
-    [string]$OutputPath = "artifacts/agentauth-five-minute-demo.webm"
+    [string]$OutputPath = "artifacts/agentauth-five-minute-demo.mp4"
 )
 
 $ErrorActionPreference = "Stop"
@@ -79,7 +79,8 @@ try {
 }
 
 & $ffmpeg -y -i $screenVideo -i $audioPath -map 0:v:0 -map 1:a:0 `
-    -c:v copy -filter:a "atempo=1.75" -c:a libopus -b:a 96k -t 300 $outputFile
+    -c:v libx264 -preset medium -crf 22 -pix_fmt yuv420p `
+    -filter:a "atempo=1.75" -c:a aac -b:a 128k -movflags +faststart -t 300 $outputFile
 if ($LASTEXITCODE -ne 0) { throw "FFmpeg could not assemble the narrated demo" }
 
 Write-Output $outputFile

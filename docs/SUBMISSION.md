@@ -89,7 +89,8 @@ provider credentials.
 
 ## Project links
 
-- Product: https://agentauth-buildathon.dikshayeole02.chatgpt.site
+- Product: https://na24b030-eng.github.io/agentauth/
+- Five-minute walkthrough: https://na24b030-eng.github.io/agentauth/downloads/agentauth-five-minute-demo.mp4
 - Alternate frontend: https://agentauth-orpin.vercel.app
 - Source: https://github.com/na24b030-eng/agentauth
 

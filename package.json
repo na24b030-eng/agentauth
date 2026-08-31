@@ -9,6 +9,7 @@
     "dev": "vinext dev",
     "build": "vinext build",
     "build:vercel": "next build",
+    "build:pages": "cross-env GITHUB_PAGES=true next build",
     "start": "vinext start",
     "lint": "eslint app e2e next.config.ts playwright.config.ts vite.config.ts",
     "test:e2e": "playwright test",
