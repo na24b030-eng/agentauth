@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
   Activity,
   AlertTriangle,
@@ -949,8 +950,10 @@ export default function Home() {
                   </small>
                 </div>
               </div>
-              {policyOpen && (
-                <div
+              {policyOpen &&
+                typeof document !== "undefined" &&
+                createPortal(
+                  <div
                   className="policy-backdrop"
                   role="presentation"
                   onMouseDown={(event) => {
@@ -1039,8 +1042,9 @@ export default function Home() {
                       </button>
                     </div>
                   </section>
-                </div>
-              )}
+                  </div>,
+                  document.body,
+                )}
               <div className="session-card">
                 <form className="composer" onSubmit={startRun}>
                   <div className="composer-title">
