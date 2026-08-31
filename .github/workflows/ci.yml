@@ -53,6 +53,5 @@ jobs:
       - run: npm audit --audit-level=low
       - run: npm run lint
       - run: npm run build
-      - run: npm run build:vercel
       - run: npx playwright install --with-deps chromium
       - run: npm run test:e2e

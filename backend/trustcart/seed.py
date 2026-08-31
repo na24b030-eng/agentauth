@@ -38,7 +38,7 @@ def seed_demo(session: Session, settings: Settings) -> dict[str, str]:
         user = User(
             id=DEMO_USER_ID,
             email="demo@trustcart.local",
-            display_name="Aarav",
+            display_name="Diksha",
             passcode_hash=hash_passcode(settings.demo_passcode.get_secret_value()),
             default_postcode="560001",
             usual_basket=[
@@ -50,6 +50,7 @@ def seed_demo(session: Session, settings: Settings) -> dict[str, str]:
         )
         session.add(user)
     else:
+        user.display_name = "Diksha"
         user.default_postcode = "560001"
     if not settings.agent_private_key_pem:
         raise RuntimeError(

@@ -23,7 +23,7 @@ try {
     $serverLog = Join-Path $artifactDirectory "demo-server.log"
     $serverErrorLog = Join-Path $artifactDirectory "demo-server-error.log"
     $server = Start-Process -FilePath "cmd.exe" `
-        -ArgumentList @("/c", "npm run start -- --host 127.0.0.1 --port 3000") `
+        -ArgumentList @("/c", "npm run start -- --hostname 127.0.0.1 --port 3000") `
         -WorkingDirectory $projectRoot `
         -RedirectStandardOutput $serverLog `
         -RedirectStandardError $serverErrorLog `
