@@ -1213,7 +1213,10 @@ export default function Home() {
                                   ? `Valid for ${Math.floor(quoteSeconds / 60)}:${String(quoteSeconds % 60).padStart(2, "0")}`
                                   : quote.status}
                               </span>
-                              <button onClick={() => setView("inspector")}>
+                              <button
+                                type="button"
+                                onClick={() => setView("inspector")}
+                              >
                                 Inspect authorization
                                 <ChevronRight size={14} />
                               </button>
@@ -1470,7 +1473,11 @@ export default function Home() {
               <div className="canonical-block">
                 <div>
                   <Code2 size={17} />
-                  <span>SIGNED CANONICAL REQUEST</span>
+                  <span>
+                    {audit.length
+                      ? "SIGNED CANONICAL REQUEST"
+                      : "CANONICAL SIGNING FORMAT"}
+                  </span>
                 </div>
                 <code>
                   TC-POP-V1{`\n`}POST{`\n`}/v1/checkouts{`\n`}raw_body_sha256 ·
@@ -1478,24 +1485,30 @@ export default function Home() {
                   {grant?.immutable_digest || "grant_immutable_digest"}
                 </code>
               </div>
-              <div className="hash-chain">
-                {(audit.length
-                  ? audit
-                  : [
-                      { sequence: 1, action: "quote.preview" },
-                      { sequence: 2, action: "checkout.reserved" },
-                    ]
-                ).map((item, index) => (
-                  <div key={`${item.sequence}-${item.action}`}>
-                    <span>
-                      {String(item.sequence).padStart(2, "0")} {item.action}
-                    </span>
-                    {index < (audit.length ? audit.length : 2) - 1 && <i />}
+              {audit.length > 0 ? (
+                <>
+                  <div className="evidence-status verified">
+                    <BadgeCheck size={16} />
+                    <div>
+                      <b>Persisted checkout evidence</b>
+                      <span>
+                        {audit.length} hash-linked event
+                        {audit.length === 1 ? "" : "s"} loaded from the
+                        merchant service.
+                      </span>
+                    </div>
                   </div>
-                ))}
-              </div>
-              {audit.length > 0 && (
-                <div className="audit-list">
+                  <div className="hash-chain">
+                    {audit.map((item, index) => (
+                      <div key={`${item.sequence}-${item.action}`}>
+                        <span>
+                          {String(item.sequence).padStart(2, "0")} {item.action}
+                        </span>
+                        {index < audit.length - 1 && <i />}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="audit-list">
                   {audit.map((event) => (
                     <div key={event.id}>
                       <span>{String(event.sequence).padStart(2, "0")}</span>
@@ -1506,6 +1519,28 @@ export default function Home() {
                       </section>
                     </div>
                   ))}
+                  </div>
+                </>
+              ) : (
+                <div className="evidence-empty">
+                  <span>
+                    <ShieldCheck size={20} />
+                  </span>
+                  <div>
+                    <b>
+                      {connection === "preview"
+                        ? "No signed evidence in preview mode"
+                        : "No checkout evidence in this session"}
+                    </b>
+                    <p>
+                      {connection === "preview"
+                        ? "This hosted preview shows the signing format, but it does not fabricate a signature or audit trail. Run the local services to produce persisted PoP and checkout events."
+                        : "Complete a commerce run to populate this view with the verified request and its persisted, hash-linked audit events."}
+                    </p>
+                    <button type="button" onClick={() => setView("commerce")}>
+                      Start a commerce run <ArrowRight size={14} />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -1630,9 +1665,21 @@ export default function Home() {
               prices, identity, inventory, authority and payment state.
             </p>
           </div>
-          <button className="audit-button" onClick={() => setView("inspector")}>
-            Inspect the signed evidence
-            <ArrowUpRight size={14} />
+          <button
+            type="button"
+            className="audit-button"
+            onClick={() =>
+              setView(view === "inspector" ? "commerce" : "inspector")
+            }
+          >
+            {view === "inspector"
+              ? "Return to commerce"
+              : "Inspect the signed evidence"}
+            {view === "inspector" ? (
+              <ArrowRight size={14} />
+            ) : (
+              <ArrowUpRight size={14} />
+            )}
           </button>
         </aside>
       </div>

@@ -91,6 +91,53 @@ test("sandbox execution is explicitly disclosed", async ({ page }) => {
   await expect(dialog).toBeHidden();
 });
 
+test("every primary tab opens a distinct, purposeful workspace", async ({
+  page,
+}) => {
+  await enterWorkspace(page);
+
+  const destinations = [
+    ["Trust Inspector", "Trust Inspector"],
+    ["Delegations", "Delegation consent"],
+    ["Developer", "Recovery lab"],
+    ["Commerce", /Good evening/],
+  ] as const;
+
+  for (const [tab, heading] of destinations) {
+    await page.getByRole("button", { name: tab, exact: true }).click();
+    await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: tab, exact: true }),
+    ).toHaveAttribute("aria-current", "page");
+  }
+});
+
+test("signed-evidence action opens an honest inspector and remains actionable", async ({
+  page,
+}) => {
+  await enterWorkspace(page);
+  await page
+    .getByRole("button", { name: "Inspect the signed evidence" })
+    .click();
+
+  await expect(
+    page.getByRole("heading", { name: "Trust Inspector" }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/SIGNED CANONICAL REQUEST|CANONICAL SIGNING FORMAT/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(
+      /Persisted checkout evidence|No signed evidence in preview mode|No checkout evidence in this session/,
+    ),
+  ).toBeVisible();
+
+  await page.getByRole("button", { name: "Return to commerce" }).click();
+  await expect(
+    page.getByRole("heading", { name: /Good evening/ }),
+  ).toBeVisible();
+});
+
 test("@live autonomous simulator completes with one visible submitted prompt", async ({
   page,
 }) => {
