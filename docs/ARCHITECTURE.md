@@ -51,10 +51,10 @@ sequenceDiagram
     A->>M: Signed PoP requests
     M->>D: Exact catalog and canonical quote
     D-->>M: Bound, expiring Quote
-    M-->>A: Quote facts; no authority delegated to model
-    L->>A: place_order() with no money/identity arguments
-    A->>M: Signed checkout request + stable idempotency key
-    M->>D: Reserve grant + inventory; consume Quote atomically
+    M-->>A: Quote facts without delegated authority
+    L->>A: Request order placement without trusted fields
+    A->>M: Signed checkout request with stable idempotency key
+    M->>D: Reserve grant and inventory then consume Quote
     D-->>M: CANCEL_WINDOW
     W->>D: Claim due Checkout
     W->>R: Create Test Order using stable receipt

@@ -13,7 +13,6 @@ adapter is available as an optional provider integration.
 
 - [AgentAuth on GitHub Pages](https://na24b030-eng.github.io/agentauth/)
 - [Five-minute product walkthrough](https://na24b030-eng.github.io/agentauth/downloads/agentauth-five-minute-demo.mp4)
-- [Alternate Vercel frontend](https://agentauth-orpin.vercel.app/)
 
 The deployments serve the same frontend. Live agent execution requires the local PostgreSQL and
 Python services described below; without those services the interface remains in its explicitly
@@ -106,15 +105,13 @@ Service health endpoints are available at `http://localhost:8000/health` and
 
 ## Deployment
 
-The repository has two independent deployment targets:
+The repository has one public frontend deployment target:
 
 - GitHub Pages publishes the static frontend from `.github/workflows/pages.yml` at the repository
   Pages URL and includes the downloadable MP4 walkthrough.
-- The frontend can be deployed to Vercel from the repository root. `vercel.json` selects the
-  Next.js framework and runs `npm run build:vercel`, which produces Vercel's `.next` output.
 - `merchant-api`, `agent-api`, `worker` and PostgreSQL must run on a container host or local Docker
   environment. The worker is a durable polling process and is intentionally not implemented as a
-  Vercel Function.
+  short-lived serverless function.
 
 Set these public frontend variables in the frontend host when it should use a remote backend:
 

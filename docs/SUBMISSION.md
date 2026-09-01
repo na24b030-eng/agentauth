@@ -91,10 +91,9 @@ provider credentials.
 
 - Product: https://na24b030-eng.github.io/agentauth/
 - Five-minute walkthrough: https://na24b030-eng.github.io/agentauth/downloads/agentauth-five-minute-demo.mp4
-- Alternate frontend: https://agentauth-orpin.vercel.app
 - Source: https://github.com/na24b030-eng/agentauth
 
-The public frontends are explicitly labelled previews when the local Python and PostgreSQL services are not
+The public frontend is explicitly labelled as a preview when the local Python and PostgreSQL services are not
 connected. The complete working MVP runs through Docker with the same frontend source.
 
 ## Scope
